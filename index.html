@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rechenzug</title>
+<style>
+  :root{
+    --bg:#111318; --surface1:#1b1e26; --surface2:#242833;
+    --border:#3a3f4d; --text:#f0f1f4; --text-dim:#9aa0ad;
+    --accent-bg:#1c3a5e; --accent-text:#7ec4ff;
+    --warn-bg:#4a3510; --warn-text:#f0b64c;
+    --ok-bg:#173a24; --ok-text:#5fd884;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding-top:env(safe-area-inset-top,0); padding-bottom:env(safe-area-inset-bottom,0);
+    display:flex; justify-content:center;
+  }
+  #app{width:100%; max-width:420px; padding:16px 14px 28px;}
+  h1{font-size:17px; font-weight:600; margin:4px 0 12px;}
+  .tabs{display:flex; gap:8px; margin-bottom:12px;}
+  .tab{flex:1; text-align:center; padding:9px 0; border-radius:10px; border:1px solid var(--border);
+       background:var(--surface1); color:var(--text-dim); font-size:14px;}
+  .tab.active{background:var(--accent-bg); color:var(--accent-text); border-color:var(--accent-bg);}
+  .rule{font-size:12.5px; color:var(--text-dim); line-height:1.5; margin:0 0 12px;}
+  .cards{display:flex; gap:10px; margin-bottom:10px;}
+  .card{flex:1; background:var(--surface1); border-radius:12px; padding:9px 12px;}
+  .card .label{font-size:11.5px; color:var(--text-dim);}
+  .card .value{font-size:18px; font-weight:600; margin-top:2px;}
+  #board{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:8px;
+    background:var(--surface1); padding:8px; border-radius:14px;
+    aspect-ratio:1; touch-action:none;
+  }
+  .cell{
+    display:flex; align-items:center; justify-content:center;
+    border-radius:9px; font-size:16px; font-weight:600; aspect-ratio:1;
+  }
+  .cell.empty{background:var(--surface2);}
+  .cell.n{background:var(--accent-bg); color:var(--accent-text);}
+  .cell.o{background:var(--warn-bg); color:var(--warn-text); font-size:14px;}
+  @keyframes pulse{0%{transform:scale(1.2);}100%{transform:scale(1);}}
+  .cell.merged{animation:pulse .3s ease-out;}
+  #log{min-height:18px; font-size:12.5px; color:var(--text-dim); text-align:center; margin-top:8px; font-family:ui-monospace,Menlo,monospace;}
+  #status{min-height:16px; text-align:center; font-size:14px; padding:9px; border-radius:10px; margin-top:6px;}
+  #status.ok{background:var(--ok-bg); color:var(--ok-text);}
+  #status.daily{background:var(--surface1); color:var(--text-dim);}
+  .btnrow{display:flex; gap:10px; margin-top:14px;}
+  button{
+    font:inherit; color:var(--text); background:var(--surface1); border:1px solid var(--border);
+    border-radius:10px; padding:11px 14px; font-size:14px;
+  }
+  button:active{background:var(--surface2);}
+  .btnrow button{flex:1;}
+  footer{margin-top:18px; font-size:11px; color:var(--text-dim); text-align:center;}
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>Rechenzug</h1>
+  <div class="tabs">
+    <div class="tab" id="tabDaily">Daily</div>
+    <div class="tab" id="tabEndless">Endlos</div>
+  </div>
+  <p class="rule">Zahl trifft auf Operator: sie verschmelzen zur berechneten Zahl. Gleiche Zahlen oder Division ohne glattes Ergebnis blockieren sich nur.</p>
+  <div class="cards">
+    <div class="card"><div class="label">Ziel</div><div class="value" id="goal">–</div></div>
+    <div class="card"><div class="label">Züge</div><div class="value"><span id="moves">0</span> <span style="font-size:12px;color:var(--text-dim);">/ min. <span id="minmoves">–</span></span></div></div>
+  </div>
+  <div id="board"></div>
+  <div id="log"></div>
+  <div id="status"></div>
+  <div class="btnrow">
+    <button id="resetBtn">Zurücksetzen</button>
+    <button id="newBtn" style="display:none;">Neues Rätsel</button>
+  </div>
+  <footer>Rechenzug · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
+</div>
+<script>
+(function(){
+"use strict";
+var N=4, CELLS=16, MAXDEPTH=7, STATE_CAP=20000;
+
+/* ---------- RNG ---------- */
+function cyrb53(str, seed){
+  seed = seed||0;
+  var h1=0xdeadbeef^seed, h2=0x41c6ce57^seed;
+  for(var i=0;i<str.length;i++){
+    var ch=str.charCodeAt(i);
+    h1=Math.imul(h1^ch,2654435761); h2=Math.imul(h2^ch,1597334677);
+  }
+  h1=Math.imul(h1^(h1>>>16),2246822507); h1^=Math.imul(h2^(h2>>>13),3266489909);
+  h2=Math.imul(h2^(h2>>>16),2246822507); h2^=Math.imul(h1^(h1>>>13),3266489909);
+  return 4294967296*(2097151&h2)+(h1>>>0);
+}
+function mulberry32(seed){
+  return function(){
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function randInt(rng,a,b){ return a+Math.floor(rng()*(b-a+1)); }
+function pick(rng,arr){ return arr[Math.floor(rng()*arr.length)]; }
+
+/* ---------- Board core ---------- */
+// cell: null | {t:'n', v} | {t:'o', op, v}
+function opLabel(c){ return c.op==='sq' ? 'x²' : (c.op==='+'?'+':c.op==='x'?'×':'÷')+c.v; }
+function apply(a,op){
+  if(op.op==='+') return a.v+op.v;
+  if(op.op==='x') return a.v*op.v;
+  if(op.op==='/') return (op.v!==0 && a.v%op.v===0) ? a.v/op.v : null;
+  if(op.op==='sq') return a.v*a.v;
+  return null;
+}
+function slideLine(line, logArr){
+  var toks=line.filter(function(x){return x;});
+  var out=[], i=0;
+  while(i<toks.length){
+    if(i+1<toks.length){
+      var a=toks[i], b=toks[i+1];
+      if(a.t==='n' && b.t==='o'){
+        var nv=apply(a,b);
+        if(nv!==null){
+          if(logArr) logArr.push(a.v+' '+opLabel(b)+' = '+nv);
+          out.push({t:'n', v:nv, m:true});
+          i+=2; continue;
+        }
+      }
+    }
+    out.push(toks[i]); i++;
+  }
+  while(out.length<N) out.push(null);
+  return out;
+}
+function applyMove(board, d, logArr){
+  var g=[]; for(var r=0;r<N;r++) g.push(board.slice(r*N,r*N+N));
+  var before=JSON.stringify(g);
+  if(d===0||d===1){
+    for(var r=0;r<N;r++){
+      var l=g[r].slice(); if(d===1) l.reverse();
+      var o=slideLine(l,logArr); if(d===1) o.reverse();
+      g[r]=o;
+    }
+  } else {
+    for(var c=0;c<N;c++){
+      var l=[]; for(var r=0;r<N;r++) l.push(g[r][c]);
+      if(d===3) l.reverse();
+      var o=slideLine(l,logArr); if(d===3) o.reverse();
+      for(var r=0;r<N;r++) g[r][c]=o[r];
+    }
+  }
+  var nb=g.reduce(function(a,row){return a.concat(row);},[]);
+  if(JSON.stringify(nb)===before) return null;
+  return nb;
+}
+function getVals(board){
+  return board.filter(function(c){return c && c.t==='n';}).map(function(c){return c.v;});
+}
+function key(board){
+  return board.map(function(c){
+    if(!c) return '.';
+    if(c.t==='n') return 'n'+c.v;
+    return 'o'+c.op+(c.op==='sq'?'':c.v);
+  }).join(',');
+}
+
+/* ---------- Generator ---------- */
+function randomBoard(rng){
+  var k = randInt(rng,5,6);
+  var positions=[]; var pool=[]; for(var i=0;i<CELLS;i++) pool.push(i);
+  for(var i=0;i<k;i++){
+    var idx=Math.floor(rng()*pool.length);
+    positions.push(pool[idx]); pool.splice(idx,1);
+  }
+  var nOps = randInt(rng,1,2);
+  var nNums = k-nOps;
+  var tiles=[];
+  for(var i=0;i<nNums;i++) tiles.push({t:'n', v:randInt(rng,2,9)});
+  for(var i=0;i<nOps;i++){
+    var op = pick(rng, ['+','+','x','x','/','sq']);
+    if(op==='sq') tiles.push({t:'o', op:'sq'});
+    else tiles.push({t:'o', op:op, v:randInt(rng,2,5)});
+  }
+  // shuffle tiles
+  for(var i=tiles.length-1;i>0;i--){ var j=Math.floor(rng()*(i+1)); var tmp=tiles[i]; tiles[i]=tiles[j]; tiles[j]=tmp; }
+  var cells=new Array(CELLS).fill(null);
+  positions.forEach(function(p,i){ cells[p]=tiles[i]; });
+  return cells;
+}
+function analyze(board, maxDepth){
+  var seen=new Map(); seen.set(key(board),0);
+  var queue=[[board,0]];
+  var valueDepth=new Map();
+  function record(vals,d){ vals.forEach(function(v){ if(!valueDepth.has(v)) valueDepth.set(v,d); }); }
+  record(getVals(board),0);
+  var qi=0;
+  while(qi<queue.length){
+    var cur=queue[qi++]; var s=cur[0], d=cur[1];
+    if(d===maxDepth) continue;
+    for(var m=0;m<4;m++){
+      var n=applyMove(s,m,null);
+      if(!n) continue;
+      var k=key(n);
+      if(seen.has(k)) continue;
+      seen.set(k,d+1);
+      record(getVals(n), d+1);
+      if(seen.size<STATE_CAP) queue.push([n,d+1]);
+    }
+  }
+  return valueDepth;
+}
+function minDepthInRange(map, lo, hi){
+  var m=Infinity;
+  map.forEach(function(d,v){ if(v>=lo && v<=hi) m=Math.min(m,d); });
+  return m;
+}
+var FALLBACK = {
+  cells:[null,null,null,null, null,null,{t:'o',op:'+',v:3},null, {t:'n',v:5},null,{t:'o',op:'x',v:3},null, null,{t:'n',v:4},{t:'n',v:2},null],
+  mode:'atleast', target:20, minMoves:4
+};
+function pickPuzzle(rng){
+  for(var attempt=0; attempt<250; attempt++){
+    var board=randomBoard(rng);
+    var valueDepth=analyze(board, MAXDEPTH);
+    var entries=[]; valueDepth.forEach(function(d,v){ if(d>=3&&d<=6) entries.push([v,d]); });
+    if(entries.length===0) continue;
+    if(rng()<0.45){
+      var base=pick(rng,entries)[0];
+      var width=8+Math.floor(rng()*6);
+      var lo=Math.max(0, base-Math.floor(width*0.4));
+      var hi=lo+width;
+      var d=minDepthInRange(valueDepth, lo, hi);
+      if(d>=3 && d<=6) return {cells:board, mode:'range', target:lo, target2:hi, minMoves:d};
+      continue;
+    } else {
+      var e=pick(rng,entries);
+      return {cells:board, mode:'exact', target:e[0], minMoves:e[1]};
+    }
+  }
+  return FALLBACK;
+}
+
+/* ---------- Game state ---------- */
+var S = { mode:'daily', board:null, puzzle:null, moves:0, won:false, log:'' };
+
+function todayKey(){
+  var d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function loadDaily(){
+  var dk=todayKey();
+  var rng=mulberry32(cyrb53('rechenzug-daily-'+dk));
+  var puzzle=pickPuzzle(rng);
+  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.log='';
+  var savedRaw=localStorage.getItem('rechenzug-daily-'+dk);
+  S.dailyDone = savedRaw ? JSON.parse(savedRaw) : null;
+}
+function loadEndless(){
+  var rng=mulberry32(cyrb53('rechenzug-endless-'+Date.now()+'-'+Math.random()));
+  var puzzle=pickPuzzle(rng);
+  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.log='';
+}
+function goalText(p){
+  if(p.mode==='exact') return '= '+p.target;
+  if(p.mode==='range') return p.target+'–'+p.target2;
+  return '≥ '+p.target;
+}
+function checkWin(){
+  var vals=getVals(S.board), p=S.puzzle;
+  var ok = p.mode==='exact' ? vals.some(function(v){return v===p.target;})
+         : p.mode==='range' ? vals.some(function(v){return v>=p.target && v<=p.target2;})
+         : vals.some(function(v){return v>=p.target;});
+  S.won=ok;
+  if(ok && S.mode==='daily'){
+    var dk=todayKey();
+    var prev=S.dailyDone;
+    if(!prev || S.moves<prev.moves){
+      localStorage.setItem('rechenzug-daily-'+dk, JSON.stringify({moves:S.moves}));
+      S.dailyDone={moves:S.moves};
+    }
+  }
+}
+function move(d){
+  if(S.won) return;
+  var logArr=[];
+  var nb=applyMove(S.board, d, logArr);
+  if(!nb) return;
+  S.board=nb; S.moves++; S.log=logArr.join('  ·  ');
+  checkWin();
+  render();
+}
+
+/* ---------- Render ---------- */
+var boardEl=document.getElementById('board');
+function render(){
+  document.getElementById('goal').textContent=goalText(S.puzzle);
+  document.getElementById('minmoves').textContent=S.puzzle.minMoves;
+  document.getElementById('log').textContent=S.log;
+  document.getElementById('moves').textContent=S.moves;
+  boardEl.innerHTML='';
+  S.board.forEach(function(c){
+    var d=document.createElement('div');
+    if(!c){ d.className='cell empty'; }
+    else if(c.t==='n'){ d.className='cell n'+(c.m?' merged':''); d.textContent=c.v; }
+    else { d.className='cell o'; d.textContent=opLabel(c); }
+    boardEl.appendChild(d);
+  });
+  var st=document.getElementById('status');
+  if(S.won){
+    st.className='ok'; st.textContent='Geschafft in '+S.moves+' Zügen';
+  } else if(S.mode==='daily' && S.dailyDone){
+    st.className='daily'; st.textContent='Heute schon gelöst, bestes Ergebnis: '+S.dailyDone.moves+' Züge';
+  } else {
+    st.className=''; st.textContent='';
+  }
+  document.getElementById('tabDaily').className='tab'+(S.mode==='daily'?' active':'');
+  document.getElementById('tabEndless').className='tab'+(S.mode==='endless'?' active':'');
+  document.getElementById('newBtn').style.display = S.mode==='endless' ? 'block' : 'none';
+}
+
+/* ---------- Input ---------- */
+document.addEventListener('keydown', function(e){
+  var m={ArrowLeft:0, ArrowRight:1, ArrowUp:2, ArrowDown:3}[e.key];
+  if(m!==undefined){ e.preventDefault(); move(m); }
+});
+var sx, sy;
+boardEl.addEventListener('touchstart', function(e){ sx=e.touches[0].clientX; sy=e.touches[0].clientY; });
+boardEl.addEventListener('touchend', function(e){
+  if(sx===undefined) return;
+  var dx=e.changedTouches[0].clientX-sx, dy=e.changedTouches[0].clientY-sy;
+  if(Math.max(Math.abs(dx),Math.abs(dy))<20) return;
+  if(Math.abs(dx)>Math.abs(dy)) move(dx>0?1:0); else move(dy>0?3:2);
+});
+document.getElementById('resetBtn').onclick=function(){
+  S.board=S.puzzle.cells.slice(); S.moves=0; S.won=false; S.log='';
+  render();
+};
+document.getElementById('newBtn').onclick=function(){ loadEndless(); render(); };
+document.getElementById('tabDaily').onclick=function(){ S.mode='daily'; loadDaily(); render(); };
+document.getElementById('tabEndless').onclick=function(){ S.mode='endless'; loadEndless(); render(); };
+
+/* ---------- Boot ---------- */
+loadDaily();
+render();
+})();
+</script>
+</body>
+</html>
