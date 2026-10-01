@@ -67,6 +67,11 @@
     <div class="tab" id="tabDaily">Daily</div>
     <div class="tab" id="tabEndless">Endlos</div>
   </div>
+  <div class="tabs" id="diffRow" style="display:none;">
+    <div class="tab" id="diffEasy">Leicht</div>
+    <div class="tab" id="diffMedium">Mittel</div>
+    <div class="tab" id="diffHard">Schwer</div>
+  </div>
   <p class="rule">Zahl trifft auf Operator: sie verschmelzen zur berechneten Zahl. Gleiche Zahlen oder Division ohne glattes Ergebnis blockieren sich nur.</p>
   <div class="cards">
     <div class="card"><div class="label">Ziel</div><div class="value" id="goal">–</div></div>
@@ -76,10 +81,11 @@
   <div id="log"></div>
   <div id="status"></div>
   <div class="btnrow">
+    <button id="undoBtn">Rückgängig</button>
     <button id="resetBtn">Zurücksetzen</button>
     <button id="newBtn" style="display:none;">Neues Rätsel</button>
   </div>
-  <footer>Rechenzug v0.2.0 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
+  <footer>Rechenzug v0.5.0 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
 </div>
 <script>
 (function(){
@@ -174,20 +180,27 @@ function key(board){
   }).join(',');
 }
 
+/* ---------- Schwierigkeitsgrade ---------- */
+var DIFFS = {
+  easy:   { tiles:[4,5], opsCount:[1,1], ops:['+','+','x'],                   numRange:[2,6], depth:[2,4], maxDepth:6,  minMerges:1 },
+  medium: { tiles:[5,7], opsCount:[1,2], ops:['+','+','x','x','/','sq'],      numRange:[2,9], depth:[3,6], maxDepth:7,  minMerges:2 },
+  hard:   { tiles:[6,8], opsCount:[2,3], ops:['+','x','x','/','/','sq','sq'], numRange:[2,9], depth:[5,8], maxDepth:8,  minMerges:3 }
+};
+
 /* ---------- Generator ---------- */
-function randomBoard(rng){
-  var k = randInt(rng,5,6);
+function randomBoard(rng, diff){
+  var k = randInt(rng,diff.tiles[0],diff.tiles[1]);
   var positions=[]; var pool=[]; for(var i=0;i<CELLS;i++) pool.push(i);
   for(var i=0;i<k;i++){
     var idx=Math.floor(rng()*pool.length);
     positions.push(pool[idx]); pool.splice(idx,1);
   }
-  var nOps = randInt(rng,1,2);
+  var nOps = Math.min(randInt(rng,diff.opsCount[0],diff.opsCount[1]), k-2);
   var nNums = k-nOps;
   var tiles=[];
-  for(var i=0;i<nNums;i++) tiles.push({t:'n', v:randInt(rng,2,9)});
+  for(var i=0;i<nNums;i++) tiles.push({t:'n', v:randInt(rng,diff.numRange[0],diff.numRange[1])});
   for(var i=0;i<nOps;i++){
-    var op = pick(rng, ['+','+','x','x','/','sq']);
+    var op = pick(rng, diff.ops);
     if(op==='sq') tiles.push({t:'o', op:'sq'});
     else tiles.push({t:'o', op:op, v:randInt(rng,2,5)});
   }
@@ -253,34 +266,69 @@ function minDepthInRange(map, lo, hi){
   map.forEach(function(d,v){ if(v>=lo && v<=hi) m=Math.min(m,d); });
   return m;
 }
+// Findet den kürzesten Weg zu winFn und zählt dabei die tatsächlichen Rechenschritte (Verschmelzungen),
+// nicht nur die Schiebe-Züge. Ein Rätsel mit vielen Zügen kann trotzdem nur eine einzige Verschmelzung enthalten.
+function solveTargetPath(board, winFn, maxDepth){
+  var startKey=key(board);
+  if(winFn(board)) return {depth:0, merges:0};
+  var parent={}; parent[startKey]=null;
+  var queue=[[board,0]], qi=0;
+  while(qi<queue.length){
+    var cur=queue[qi++]; var s=cur[0], d=cur[1];
+    if(d===maxDepth) continue;
+    for(var m=0;m<4;m++){
+      var logArr=[];
+      var n=applyMove(s,m,logArr);
+      if(!n) continue;
+      var k=key(n);
+      if(parent.hasOwnProperty(k)) continue;
+      parent[k]={prev:key(s), merges:logArr.length};
+      if(winFn(n)){
+        var total=0, cursor=k;
+        while(parent[cursor]){ total+=parent[cursor].merges; cursor=parent[cursor].prev; }
+        return {depth:d+1, merges:total};
+      }
+      if(Object.keys(parent).length<STATE_CAP) queue.push([n,d+1]);
+    }
+  }
+  return null;
+}
 var FALLBACK = {
   cells:[null,null,null,null, null,null,{t:'o',op:'+',v:3},null, {t:'n',v:5},null,{t:'o',op:'x',v:3},null, null,{t:'n',v:4},{t:'n',v:2},null],
   mode:'atleast', target:20, minMoves:4
 };
-function pickPuzzle(rng){
-  for(var attempt=0; attempt<250; attempt++){
-    var board=randomBoard(rng);
-    var valueDepth=analyze(board, MAXDEPTH);
-    var entries=[]; valueDepth.forEach(function(d,v){ if(d>=3&&d<=6) entries.push([v,d]); });
+function pickPuzzle(rng, diff){
+  diff = diff || DIFFS.medium;
+  var dmin=diff.depth[0], dmax=diff.depth[1];
+  for(var attempt=0; attempt<500; attempt++){
+    var board=randomBoard(rng, diff);
+    var valueDepth=analyze(board, diff.maxDepth);
+    var entries=[]; valueDepth.forEach(function(d,v){ if(d>=dmin&&d<=dmax&&v>1) entries.push([v,d]); });
     if(entries.length===0) continue;
+    var candidate;
     if(rng()<0.45){
       var base=pick(rng,entries)[0];
       var width=8+Math.floor(rng()*6);
       var lo=Math.max(0, base-Math.floor(width*0.4));
       var hi=lo+width;
       var d=minDepthInRange(valueDepth, lo, hi);
-      if(d>=3 && d<=6) return {cells:board, mode:'range', target:lo, target2:hi, minMoves:d};
-      continue;
+      if(d<dmin || d>dmax) continue;
+      candidate={mode:'range', target:lo, target2:hi, minMoves:d};
     } else {
       var e=pick(rng,entries);
-      return {cells:board, mode:'exact', target:e[0], minMoves:e[1]};
+      candidate={mode:'exact', target:e[0], minMoves:e[1]};
     }
+    var res=solveTargetPath(board, function(b){ return winCheck(b, candidate); }, diff.maxDepth);
+    if(!res || res.merges<diff.minMerges) continue;
+    candidate.cells=board;
+    candidate.merges=res.merges;
+    return candidate;
   }
   return FALLBACK;
 }
 
 /* ---------- Game state ---------- */
-var S = { mode:'daily', board:null, puzzle:null, moves:0, won:false, stuck:false, log:'' };
+var S = { mode:'daily', difficulty:'medium', board:null, puzzle:null, moves:0, won:false, stuck:false, log:'', history:[] };
 
 function todayKey(){
   var d=new Date();
@@ -289,15 +337,16 @@ function todayKey(){
 function loadDaily(){
   var dk=todayKey();
   var rng=mulberry32(cyrb53('rechenzug-daily-'+dk));
-  var puzzle=pickPuzzle(rng);
-  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log='';
+  var puzzle=pickPuzzle(rng, DIFFS.medium);
+  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[];
   var savedRaw=localStorage.getItem('rechenzug-daily-'+dk);
   S.dailyDone = savedRaw ? JSON.parse(savedRaw) : null;
 }
 function loadEndless(){
+  var diff = DIFFS[S.difficulty] || DIFFS.medium;
   var rng=mulberry32(cyrb53('rechenzug-endless-'+Date.now()+'-'+Math.random()));
-  var puzzle=pickPuzzle(rng);
-  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log='';
+  var puzzle=pickPuzzle(rng, diff);
+  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[];
 }
 function goalText(p){
   if(p.mode==='exact') return '= '+p.target;
@@ -326,7 +375,16 @@ function move(d){
   var logArr=[];
   var nb=applyMove(S.board, d, logArr);
   if(!nb) return;
+  S.history.push({board:S.board, moves:S.moves, log:S.log});
   S.board=nb; S.moves++; S.log=logArr.join('  ·  ');
+  checkWin();
+  render();
+}
+function undo(){
+  if(S.history.length===0 || S.won) return;
+  var prev=S.history.pop();
+  S.board=prev.board; S.moves++; S.log='Rückgängig';
+  S.stuck=false;
   checkWin();
   render();
 }
@@ -350,7 +408,7 @@ function render(){
   if(S.won){
     st.className='ok'; st.textContent='Geschafft in '+S.moves+' Zügen';
   } else if(S.stuck){
-    st.className='stuck'; st.textContent='Ziel nicht mehr erreichbar — zurücksetzen';
+    st.className='stuck'; st.textContent='Ziel nicht mehr erreichbar — rückgängig oder zurücksetzen';
   } else if(S.mode==='daily' && S.dailyDone){
     st.className='daily'; st.textContent='Heute schon gelöst, bestes Ergebnis: '+S.dailyDone.moves+' Züge';
   } else {
@@ -359,6 +417,14 @@ function render(){
   document.getElementById('tabDaily').className='tab'+(S.mode==='daily'?' active':'');
   document.getElementById('tabEndless').className='tab'+(S.mode==='endless'?' active':'');
   document.getElementById('newBtn').style.display = S.mode==='endless' ? 'block' : 'none';
+  document.getElementById('diffRow').style.display = S.mode==='endless' ? 'flex' : 'none';
+  ['easy','medium','hard'].forEach(function(k){
+    var id={easy:'diffEasy',medium:'diffMedium',hard:'diffHard'}[k];
+    document.getElementById(id).className='tab'+(S.difficulty===k?' active':'');
+  });
+  var undoDisabled = S.history.length===0 || S.won;
+  document.getElementById('undoBtn').disabled = undoDisabled;
+  document.getElementById('undoBtn').style.opacity = undoDisabled ? 0.4 : 1;
 }
 
 /* ---------- Input ---------- */
@@ -375,12 +441,17 @@ boardEl.addEventListener('touchend', function(e){
   if(Math.abs(dx)>Math.abs(dy)) move(dx>0?1:0); else move(dy>0?3:2);
 });
 document.getElementById('resetBtn').onclick=function(){
-  S.board=S.puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log='';
+  S.board=S.puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[];
   render();
 };
+document.getElementById('undoBtn').onclick=undo;
 document.getElementById('newBtn').onclick=function(){ loadEndless(); render(); };
 document.getElementById('tabDaily').onclick=function(){ S.mode='daily'; loadDaily(); render(); };
 document.getElementById('tabEndless').onclick=function(){ S.mode='endless'; loadEndless(); render(); };
+['easy','medium','hard'].forEach(function(k){
+  var id={easy:'diffEasy',medium:'diffMedium',hard:'diffHard'}[k];
+  document.getElementById(id).onclick=function(){ S.difficulty=k; loadEndless(); render(); };
+});
 
 /* ---------- Boot ---------- */
 loadDaily();
