@@ -50,6 +50,7 @@
   #status.ok{background:var(--ok-bg); color:var(--ok-text);}
   #status.daily{background:var(--surface1); color:var(--text-dim);}
   #status.stuck{background:var(--warn-bg); color:var(--warn-text);}
+  #diffRow .tab{font-size:12px; padding:8px 0;}
   .btnrow{display:flex; gap:10px; margin-top:14px;}
   button{
     font:inherit; color:var(--text); background:var(--surface1); border:1px solid var(--border);
@@ -67,10 +68,12 @@
     <div class="tab" id="tabDaily">Daily</div>
     <div class="tab" id="tabEndless">Endlos</div>
   </div>
-  <div class="tabs" id="diffRow" style="display:none;">
+  <div class="tabs" id="diffRow" style="display:none; flex-wrap:wrap;">
     <div class="tab" id="diffEasy">Leicht</div>
     <div class="tab" id="diffMedium">Mittel</div>
     <div class="tab" id="diffHard">Schwer</div>
+    <div class="tab" id="diffMaster">Master</div>
+    <div class="tab" id="diffOverkill">Overkill</div>
   </div>
   <p class="rule">Zahl trifft auf Operator: sie verschmelzen zur berechneten Zahl. Gleiche Zahlen oder Division ohne glattes Ergebnis blockieren sich nur.</p>
   <div class="cards">
@@ -85,7 +88,7 @@
     <button id="resetBtn">Zurücksetzen</button>
     <button id="newBtn" style="display:none;">Neues Rätsel</button>
   </div>
-  <footer>Rechenzug v0.6.0 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
+  <footer>Rechenzug v0.7.0 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
 </div>
 <script>
 (function(){
@@ -182,10 +185,14 @@ function key(board){
 
 /* ---------- Schwierigkeitsgrade ---------- */
 var DIFFS = {
-  easy:   { tiles:[4,5], opsCount:[1,1], ops:['+','+','x'],                   numRange:[2,6], depth:[2,4], maxDepth:6,  minMerges:1 },
-  medium: { tiles:[5,7], opsCount:[1,2], ops:['+','+','x','x','/','sq'],      numRange:[2,9], depth:[3,6], maxDepth:7,  minMerges:2 },
-  hard:   { tiles:[6,8], opsCount:[2,3], ops:['+','x','x','/','/','sq','sq'], numRange:[2,9], depth:[5,8], maxDepth:8,  minMerges:3 }
+  easy:     { tiles:[4,5],  opsCount:[1,1], ops:['+','+','x'],                   numRange:[2,6], depth:[2,4],   maxDepth:6,  minMerges:1, stateCap:20000 },
+  medium:   { tiles:[5,7],  opsCount:[1,2], ops:['+','+','x','x','/','sq'],      numRange:[2,9], depth:[3,6],   maxDepth:7,  minMerges:2, stateCap:20000 },
+  hard:     { tiles:[6,8],  opsCount:[2,3], ops:['+','x','x','/','/','sq','sq'], numRange:[2,9], depth:[5,8],   maxDepth:8,  minMerges:3, stateCap:20000 },
+  master:   { tiles:[7,9],  opsCount:[3,4], ops:['+','x','x','/','/','sq','sq'], numRange:[2,9], depth:[6,11],  maxDepth:11, minMerges:4, stateCap:70000 },
+  overkill: { tiles:[8,10], opsCount:[4,5], ops:['+','x','x','/','/','sq','sq'], numRange:[2,9], depth:[8,14],  maxDepth:14, minMerges:5, stateCap:120000 }
 };
+var DIFF_KEYS=['easy','medium','hard','master','overkill'];
+var DIFF_IDS={easy:'diffEasy',medium:'diffMedium',hard:'diffHard',master:'diffMaster',overkill:'diffOverkill'};
 
 /* ---------- Generator ---------- */
 function randomBoard(rng, diff){
@@ -210,7 +217,8 @@ function randomBoard(rng, diff){
   positions.forEach(function(p,i){ cells[p]=tiles[i]; });
   return cells;
 }
-function analyze(board, maxDepth){
+function analyze(board, maxDepth, cap){
+  cap = cap || STATE_CAP;
   var seen=new Map(); seen.set(key(board),0);
   var queue=[[board,0]];
   var valueDepth=new Map();
@@ -227,7 +235,7 @@ function analyze(board, maxDepth){
       if(seen.has(k)) continue;
       seen.set(k,d+1);
       record(getVals(n), d+1);
-      if(seen.size<STATE_CAP) queue.push([n,d+1]);
+      if(seen.size<cap) queue.push([n,d+1]);
     }
   }
   return valueDepth;
@@ -246,7 +254,8 @@ function minDepthInRange(map, lo, hi){
 }
 // Findet den kürzesten Weg zu winFn und zählt dabei die tatsächlichen Rechenschritte (Verschmelzungen),
 // nicht nur die Schiebe-Züge. Ein Rätsel mit vielen Zügen kann trotzdem nur eine einzige Verschmelzung enthalten.
-function solveTargetPath(board, winFn, maxDepth){
+function solveTargetPath(board, winFn, maxDepth, cap){
+  cap = cap || STATE_CAP;
   var startKey=key(board);
   if(winFn(board)) return {depth:0, merges:0};
   var parent={}; parent[startKey]=null;
@@ -266,7 +275,7 @@ function solveTargetPath(board, winFn, maxDepth){
         while(parent[cursor]){ total+=parent[cursor].merges; cursor=parent[cursor].prev; }
         return {depth:d+1, merges:total};
       }
-      if(Object.keys(parent).length<STATE_CAP) queue.push([n,d+1]);
+      if(Object.keys(parent).length<cap) queue.push([n,d+1]);
     }
   }
   return null;
@@ -280,7 +289,7 @@ function pickPuzzle(rng, diff){
   var dmin=diff.depth[0], dmax=diff.depth[1];
   for(var attempt=0; attempt<500; attempt++){
     var board=randomBoard(rng, diff);
-    var valueDepth=analyze(board, diff.maxDepth);
+    var valueDepth=analyze(board, diff.maxDepth, diff.stateCap);
     var entries=[]; valueDepth.forEach(function(d,v){ if(d>=dmin&&d<=dmax&&v>1) entries.push([v,d]); });
     if(entries.length===0) continue;
     var candidate;
@@ -296,7 +305,7 @@ function pickPuzzle(rng, diff){
       var e=pick(rng,entries);
       candidate={mode:'exact', target:e[0], minMoves:e[1]};
     }
-    var res=solveTargetPath(board, function(b){ return winCheck(b, candidate); }, diff.maxDepth);
+    var res=solveTargetPath(board, function(b){ return winCheck(b, candidate); }, diff.maxDepth, diff.stateCap);
     if(!res || res.merges<diff.minMerges) continue;
     candidate.cells=board;
     candidate.merges=res.merges;
@@ -396,9 +405,8 @@ function render(){
   document.getElementById('tabEndless').className='tab'+(S.mode==='endless'?' active':'');
   document.getElementById('newBtn').style.display = S.mode==='endless' ? 'block' : 'none';
   document.getElementById('diffRow').style.display = S.mode==='endless' ? 'flex' : 'none';
-  ['easy','medium','hard'].forEach(function(k){
-    var id={easy:'diffEasy',medium:'diffMedium',hard:'diffHard'}[k];
-    document.getElementById(id).className='tab'+(S.difficulty===k?' active':'');
+  DIFF_KEYS.forEach(function(k){
+    document.getElementById(DIFF_IDS[k]).className='tab'+(S.difficulty===k?' active':'');
   });
   var undoDisabled = S.history.length===0 || S.won;
   document.getElementById('undoBtn').disabled = undoDisabled;
@@ -424,12 +432,16 @@ document.getElementById('resetBtn').onclick=function(){
   render();
 };
 document.getElementById('undoBtn').onclick=undo;
-document.getElementById('newBtn').onclick=function(){ loadEndless(); render(); };
+function withLoading(fn){
+  var st=document.getElementById('status');
+  st.className=''; st.textContent='Rätsel wird generiert …';
+  setTimeout(function(){ fn(); render(); }, 0);
+}
+document.getElementById('newBtn').onclick=function(){ withLoading(loadEndless); };
 document.getElementById('tabDaily').onclick=function(){ S.mode='daily'; loadDaily(); render(); };
-document.getElementById('tabEndless').onclick=function(){ S.mode='endless'; loadEndless(); render(); };
-['easy','medium','hard'].forEach(function(k){
-  var id={easy:'diffEasy',medium:'diffMedium',hard:'diffHard'}[k];
-  document.getElementById(id).onclick=function(){ S.difficulty=k; loadEndless(); render(); };
+document.getElementById('tabEndless').onclick=function(){ S.mode='endless'; withLoading(loadEndless); };
+DIFF_KEYS.forEach(function(k){
+  document.getElementById(DIFF_IDS[k]).onclick=function(){ S.difficulty=k; withLoading(loadEndless); };
 });
 
 /* ---------- Boot ---------- */
