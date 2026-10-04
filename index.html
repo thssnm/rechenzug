@@ -85,7 +85,7 @@
     <button id="resetBtn">Zurücksetzen</button>
     <button id="newBtn" style="display:none;">Neues Rätsel</button>
   </div>
-  <footer>Rechenzug v0.5.0 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
+  <footer>Rechenzug v0.6.0 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
 </div>
 <script>
 (function(){
@@ -238,29 +238,7 @@ function winCheck(board, puzzle){
   if(puzzle.mode==='range') return vals.some(function(v){return v>=puzzle.target && v<=puzzle.target2;});
   return vals.some(function(v){return v>=puzzle.target;});
 }
-function anyMovePossible(board){
-  for(var m=0;m<4;m++){ if(applyMove(board,m,null)) return true; }
-  return false;
-}
-// Prüft ab dem aktuellen Stand, ob das Ziel überhaupt noch erreichbar ist (nicht nur ob noch Züge möglich sind).
-function isSolvableFrom(board, puzzle){
-  if(winCheck(board, puzzle)) return true;
-  var seen=new Set([key(board)]);
-  var queue=[board], qi=0;
-  while(qi<queue.length){
-    var s=queue[qi++];
-    for(var m=0;m<4;m++){
-      var n=applyMove(s,m,null);
-      if(!n) continue;
-      var k=key(n);
-      if(seen.has(k)) continue;
-      seen.add(k);
-      if(winCheck(n, puzzle)) return true;
-      if(seen.size<STATE_CAP) queue.push(n);
-    }
-  }
-  return false;
-}
+
 function minDepthInRange(map, lo, hi){
   var m=Infinity;
   map.forEach(function(d,v){ if(v>=lo && v<=hi) m=Math.min(m,d); });
@@ -337,7 +315,7 @@ function todayKey(){
 function loadDaily(){
   var dk=todayKey();
   var rng=mulberry32(cyrb53('rechenzug-daily-'+dk));
-  var puzzle=pickPuzzle(rng, DIFFS.medium);
+  var puzzle=pickPuzzle(rng, DIFFS.hard);
   S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[];
   var savedRaw=localStorage.getItem('rechenzug-daily-'+dk);
   S.dailyDone = savedRaw ? JSON.parse(savedRaw) : null;
@@ -353,11 +331,14 @@ function goalText(p){
   if(p.mode==='range') return p.target+'–'+p.target2;
   return '≥ '+p.target;
 }
+function hasOperators(board){
+  return board.some(function(c){ return c && c.t==='o'; });
+}
 function checkWin(){
   var p=S.puzzle;
   var ok = winCheck(S.board, p);
   S.won=ok;
-  S.stuck=false;
+  S.stuck = !ok && !hasOperators(S.board);
   if(ok && S.mode==='daily'){
     var dk=todayKey();
     var prev=S.dailyDone;
@@ -365,9 +346,6 @@ function checkWin(){
       localStorage.setItem('rechenzug-daily-'+dk, JSON.stringify({moves:S.moves}));
       S.dailyDone={moves:S.moves};
     }
-  }
-  if(!ok){
-    if(!anyMovePossible(S.board) || !isSolvableFrom(S.board, p)) S.stuck=true;
   }
 }
 function move(d){
@@ -441,7 +419,8 @@ boardEl.addEventListener('touchend', function(e){
   if(Math.abs(dx)>Math.abs(dy)) move(dx>0?1:0); else move(dy>0?3:2);
 });
 document.getElementById('resetBtn').onclick=function(){
-  S.board=S.puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[];
+  S.board=S.puzzle.cells.slice(); S.log=''; S.history=[];
+  checkWin();
   render();
 };
 document.getElementById('undoBtn').onclick=undo;
