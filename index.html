@@ -47,27 +47,47 @@
   .cards{display:flex; gap:10px; margin-bottom:10px;}
   .card{flex:1; background:var(--surface1); border-radius:12px; padding:9px 12px;}
   .card .label{font-size:11.5px; color:var(--text-dim);}
-  .card .value{font-size:18px; font-weight:600; margin-top:2px;}
+  .card .value{font-size:24px; font-weight:700; margin-top:2px;}
   #board{
     display:grid; grid-template-columns:repeat(4,1fr); gap:8px;
     background:var(--surface1); padding:8px; border-radius:14px;
     aspect-ratio:1; touch-action:none;
   }
   .cell{
-    display:flex; align-items:center; justify-content:center;
-    border-radius:9px; font-size:16px; font-weight:600; aspect-ratio:1;
+    display:flex; align-items:center; justify-content:center; overflow:hidden;
+    border-radius:9px; font-size:32px; font-weight:700; aspect-ratio:1; line-height:1;
   }
   .cell.empty{background:var(--surface2);}
   .cell.n{background:var(--accent-bg); color:var(--accent-text);}
-  .cell.o{background:var(--warn-bg); color:var(--warn-text); font-size:14px;}
+  .cell.o{background:var(--warn-bg); color:var(--warn-text); font-size:30px;}
+  /* Zahlen schrumpfen mit der Ziffernanzahl, damit sie nie überlaufen */
+  .cell.n.len1,.cell.n.len2{font-size:34px;}
+  .cell.n.len3{font-size:28px;}
+  .cell.n.len4{font-size:22px;}
+  .cell.n.len5{font-size:18px;}
+  .cell.n.len6{font-size:14px;}
+  .demo .cell.n,.demo .cell.o{font-size:22px;}
   @keyframes pulse{0%{transform:scale(1.2);}100%{transform:scale(1);}}
   .cell.merged{animation:pulse .3s ease-out;}
-  #log{min-height:18px; font-size:12.5px; color:var(--text-dim); text-align:center; margin-top:8px; font-family:ui-monospace,Menlo,monospace;}
+  #log{min-height:20px; font-size:15px; color:var(--text-dim); text-align:center; margin-top:8px; font-family:ui-monospace,Menlo,monospace;}
   #status{min-height:16px; text-align:center; font-size:14px; padding:9px; border-radius:10px; margin-top:6px;}
   #status.ok{background:var(--ok-bg); color:var(--ok-text);}
   #status.daily{background:var(--surface1); color:var(--text-dim);}
   #status.stuck{background:var(--warn-bg); color:var(--warn-text);}
   #diffRow .tab{font-size:12px; padding:8px 0;}
+  #result{display:none; background:var(--surface1); border:1px solid var(--border); border-radius:14px;
+          padding:14px; margin-top:12px; text-align:center;}
+  #result .rtitle{font-size:13px; color:var(--text-dim);}
+  #result .rmain{font-size:24px; font-weight:700; margin:4px 0 2px;}
+  #result .rverdict{font-size:14px; color:var(--ok-text); margin-bottom:10px;}
+  .trail{display:flex; flex-direction:column; gap:4px; align-items:center; margin:8px 0 6px;}
+  .trail .row{display:flex; gap:4px;}
+  .sq{width:26px; height:26px; border-radius:6px;}
+  .sq.m{background:#2f9e5b;} .sq.s{background:#c9ccd4;} .sq.u{background:#e0b83a;} .sq.r{background:#d2504b;}
+  .legend{font-size:11.5px; color:var(--text-dim); margin-bottom:12px; line-height:1.6;}
+  .legend i{display:inline-block; width:10px; height:10px; border-radius:3px; margin:0 4px -1px 8px;}
+  #result .btnrow{margin-top:6px;}
+  #toast{min-height:18px; font-size:12.5px; color:var(--ok-text); margin-top:8px;}
   .btnrow{display:flex; gap:10px; margin-top:14px;}
   button{
     font:inherit; color:var(--text); background:var(--surface1); border:1px solid var(--border);
@@ -105,13 +125,27 @@
   <div id="board"></div>
   <div id="log"></div>
   <div id="status"></div>
+  <div id="result">
+    <div class="rtitle" id="rTitle"></div>
+    <div class="rmain" id="rMain"></div>
+    <div class="rverdict" id="rVerdict"></div>
+    <div class="trail" id="rTrail"></div>
+    <div class="legend">
+      <i style="background:#2f9e5b"></i>gerechnet<i style="background:#c9ccd4"></i>geschoben<i style="background:#e0b83a"></i>rückgängig<i style="background:#d2504b"></i>zurückgesetzt
+    </div>
+    <div class="btnrow">
+      <button id="shareBtn">Teilen</button>
+      <button id="copyBtn">Kopieren</button>
+    </div>
+    <div id="toast"></div>
+  </div>
   <div class="btnrow">
     <button id="undoBtn">Rückgängig</button>
     <button id="resetBtn">Zurücksetzen</button>
     <button id="newBtn" style="display:none;">Neues Rätsel</button>
     <button id="nextBtn" style="display:none;">Weiter</button>
   </div>
-  <footer>Rechenzug v0.8.0 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
+  <footer>Rechenzug v0.9.2 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
 </div>
 <div id="help">
   <div id="helpBox">
@@ -359,25 +393,30 @@ function pickPuzzle(rng, diff){
 }
 
 /* ---------- Game state ---------- */
-var S = { mode:'daily', difficulty:'medium', board:null, puzzle:null, moves:0, won:false, stuck:false, log:'', history:[] };
+var S = { mode:'daily', difficulty:'medium', board:null, puzzle:null, moves:0, won:false, stuck:false, log:'', history:[], trail:'' };
 
 function todayKey(){
   var d=new Date();
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
+// Browser-Speicher kann gesperrt sein (manche In-App-Browser, file://): dann läuft das Spiel einfach ohne Speichern.
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 function loadDaily(){
   var dk=todayKey();
   var rng=mulberry32(cyrb53('rechenzug-daily-'+dk));
   var puzzle=pickPuzzle(rng, DIFFS.hard);
-  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[];
-  var savedRaw=localStorage.getItem('rechenzug-daily-'+dk);
-  S.dailyDone = savedRaw ? JSON.parse(savedRaw) : null;
+  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail='';
+  var saved=null;
+  try{ var raw=lsGet('rechenzug-daily-'+dk); saved=raw ? JSON.parse(raw) : null; }catch(e){ saved=null; }
+  // Ergebnisse aus Versionen ohne Zugliste lassen sich nicht teilen: verwerfen, dann kann neu gespielt werden.
+  S.dailyDone = (saved && typeof saved.trail==='string') ? saved : null;
 }
 function loadEndless(){
   var diff = DIFFS[S.difficulty] || DIFFS.medium;
   var rng=mulberry32(cyrb53('rechenzug-endless-'+Date.now()+'-'+Math.random()));
   var puzzle=pickPuzzle(rng, diff);
-  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[];
+  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail='';
 }
 
 /* ---------- Tutorial ---------- */
@@ -396,7 +435,7 @@ function loadTutorial(idx){
   S.tutorialIdx=idx;
   var t=TUTORIAL[idx];
   S.puzzle={cells:t.cells, mode:t.mode, target:t.target, minMoves:t.minMoves};
-  S.board=t.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[];
+  S.board=t.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail='';
 }
 function goalText(p){
   if(p.mode==='exact') return '= '+p.target;
@@ -415,8 +454,9 @@ function checkWin(){
     var dk=todayKey();
     var prev=S.dailyDone;
     if(!prev || S.moves<prev.moves){
-      localStorage.setItem('rechenzug-daily-'+dk, JSON.stringify({moves:S.moves}));
-      S.dailyDone={moves:S.moves};
+      var rec={moves:S.moves, trail:S.trail};
+      lsSet('rechenzug-daily-'+dk, JSON.stringify(rec));
+      S.dailyDone=rec;
     }
   }
 }
@@ -427,13 +467,14 @@ function move(d){
   if(!nb) return;
   S.history.push({board:S.board, moves:S.moves, log:S.log});
   S.board=nb; S.moves++; S.log=logArr.join('  ·  ');
+  S.trail += logArr.length ? 'm' : 's';
   checkWin();
   render();
 }
 function undo(){
   if(S.history.length===0 || S.won) return;
   var prev=S.history.pop();
-  S.board=prev.board; S.moves++; S.log='Rückgängig';
+  S.board=prev.board; S.moves++; S.log='Rückgängig'; S.trail += 'u';
   S.stuck=false;
   checkWin();
   render();
@@ -441,6 +482,87 @@ function undo(){
 
 /* ---------- Render ---------- */
 var boardEl=document.getElementById('board');
+/* ---------- Ergebnis teilen (Wordle-Stil) ---------- */
+var LAUNCH='2026-10-13';
+function dayNumber(){
+  function ms(k){ var a=k.split('-'); return Date.UTC(+a[0], +a[1]-1, +a[2]); }
+  return Math.max(1, Math.round((ms(todayKey())-ms(LAUNCH))/86400000)+1);
+}
+function dateDE(){ var a=todayKey().split('-'); return a[2]+'.'+a[1]+'.'+a[0]; }
+var EMOJI={m:'\uD83D\uDFE9', s:'\u2B1C', u:'\uD83D\uDFE8', r:'\uD83D\uDFE5'};
+var ROW=8, MAXROWS=4;
+function trailRows(trail){
+  var cut=trail.slice(-ROW*MAXROWS), rows=[];   // die letzten Felder: dort steht, wie es ausging
+  for(var i=0;i<cut.length;i+=ROW) rows.push(cut.slice(i,i+ROW));
+  return {rows:rows, extra:trail.length-cut.length};
+}
+function verdict(moves, min){
+  if(moves<=min) return 'Perfekt: Mindestzahl erreicht';
+  if(moves<=min+2) return 'Sehr gut';
+  if(moves<=Math.ceil(min*1.5)) return 'Gut';
+  return 'Geschafft';
+}
+function resultData(){
+  if(S.mode!=='daily') return null;
+  if(S.won) return {moves:S.moves, trail:S.trail};
+  return S.dailyDone || null;
+}
+function shareText(r){
+  var t=trailRows(r.trail||'');
+  var lines=['Rechenzug #'+dayNumber()+' \u00B7 '+dateDE(),
+             'Ziel '+goalText(S.puzzle)+' \u00B7 '+r.moves+' Z\u00FCge (min. '+S.puzzle.minMoves+')'];
+  if(t.extra>0) lines.push('\u2026 +'+t.extra);
+  t.rows.forEach(function(row){ lines.push(row.split('').map(function(c){return EMOJI[c]||'';}).join('')); });
+  if(/^https?:/.test(location.protocol)) lines.push(location.origin+location.pathname);
+  return lines.join('\n');
+}
+function renderResult(){
+  var box=document.getElementById('result'), r=resultData();
+  if(!r){ box.style.display='none'; return; }
+  box.style.display='block';
+  document.getElementById('rTitle').textContent='Rechenzug #'+dayNumber()+' \u00B7 '+dateDE();
+  document.getElementById('rMain').textContent=r.moves+' Z\u00FCge';
+  document.getElementById('rVerdict').textContent=verdict(r.moves, S.puzzle.minMoves)+' (min. '+S.puzzle.minMoves+')';
+  var tr=document.getElementById('rTrail'); tr.innerHTML='';
+  var t=trailRows(r.trail||'');
+  if(t.extra>0){ var more=document.createElement('div'); more.className='legend'; more.textContent='\u2026 +'+t.extra+' davor'; tr.appendChild(more); }
+  t.rows.forEach(function(row){
+    var rowEl=document.createElement('div'); rowEl.className='row';
+    row.split('').forEach(function(c){ var q=document.createElement('div'); q.className='sq '+c; rowEl.appendChild(q); });
+    tr.appendChild(rowEl);
+  });
+}
+function toast(msg){
+  var el=document.getElementById('toast'); el.textContent=msg;
+  setTimeout(function(){ if(el.textContent===msg) el.textContent=''; }, 2500);
+}
+function copyText(text){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise(function(res, rej){
+    try{
+      var ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select();
+      var okc=document.execCommand('copy'); document.body.removeChild(ta);
+      okc ? res() : rej(new Error('copy'));
+    }catch(e){ rej(e); }
+  });
+}
+function doCopy(){
+  var r=resultData(); if(!r) return;
+  copyText(shareText(r)).then(function(){ toast('In die Zwischenablage kopiert'); },
+                              function(){ toast('Kopieren nicht m\u00F6glich'); });
+}
+function doShare(){
+  var r=resultData(); if(!r) return;
+  var text=shareText(r);
+  if(navigator.share){
+    navigator.share({text:text}).catch(function(err){ if(err && err.name!=='AbortError') doCopy(); });
+  } else { doCopy(); }
+}
+// Ab einer Million kompakt anzeigen, damit riesige Quadrat-Ketten nicht aus der Kachel laufen.
+function fmtNum(v){ return v>=1000000 ? v.toExponential(1).replace('+','') : String(v); }
 function render(){
   document.getElementById('goal').textContent=goalText(S.puzzle);
   document.getElementById('minmoves').textContent=S.puzzle.minMoves;
@@ -450,7 +572,7 @@ function render(){
   S.board.forEach(function(c){
     var d=document.createElement('div');
     if(!c){ d.className='cell empty'; }
-    else if(c.t==='n'){ d.className='cell n'+(c.m?' merged':''); d.textContent=c.v; }
+    else if(c.t==='n'){ var txt=fmtNum(c.v); d.className='cell n len'+Math.min(txt.length,6)+(c.m?' merged':''); d.textContent=txt; }
     else { d.className='cell o'; d.textContent=opLabel(c); }
     boardEl.appendChild(d);
   });
@@ -480,6 +602,7 @@ function render(){
   DIFF_KEYS.forEach(function(k){
     document.getElementById(DIFF_IDS[k]).className='tab'+(S.difficulty===k?' active':'');
   });
+  renderResult();
   var undoDisabled = S.history.length===0 || S.won;
   document.getElementById('undoBtn').disabled = undoDisabled;
   document.getElementById('undoBtn').style.opacity = undoDisabled ? 0.4 : 1;
@@ -501,11 +624,13 @@ boardEl.addEventListener('touchend', function(e){
   if(Math.abs(dx)>Math.abs(dy)) move(dx>0?1:0); else move(dy>0?3:2);
 });
 document.getElementById('resetBtn').onclick=function(){
-  S.board=S.puzzle.cells.slice(); S.log=''; S.history=[];
+  S.board=S.puzzle.cells.slice(); S.log=''; S.history=[]; S.trail += 'r';
   checkWin();
   render();
 };
 document.getElementById('undoBtn').onclick=undo;
+document.getElementById('shareBtn').onclick=doShare;
+document.getElementById('copyBtn').onclick=doCopy;
 function withLoading(fn){
   var st=document.getElementById('status');
   st.className=''; st.textContent='Rätsel wird generiert …';
@@ -534,12 +659,10 @@ DIFF_KEYS.forEach(function(k){
 /* ---------- Boot ---------- */
 loadDaily();
 render();
-try{
-  if(!localStorage.getItem('rechenzug-help-seen')){
-    localStorage.setItem('rechenzug-help-seen','1');
-    openHelp();
-  }
-}catch(e){ openHelp(); }
+if(!lsGet('rechenzug-help-seen')){
+  lsSet('rechenzug-help-seen','1');
+  openHelp();
+}
 })();
 </script>
 </body>
