@@ -21,7 +21,24 @@
     display:flex; justify-content:center;
   }
   #app{width:100%; max-width:420px; padding:16px 14px 28px;}
-  h1{font-size:17px; font-weight:600; margin:4px 0 12px;}
+  .head{display:flex; justify-content:space-between; align-items:center; margin:4px 0 12px;}
+  h1{font-size:17px; font-weight:600; margin:0;}
+  .iconbtn{width:34px; height:34px; padding:0; border-radius:50%; font-weight:600;}
+  .hint{font-size:13.5px; line-height:1.5; background:var(--accent-bg); color:var(--accent-text);
+        border-radius:10px; padding:10px 12px; margin:0 0 12px;}
+  #help{position:fixed; inset:0; background:rgba(0,0,0,.72); display:none; z-index:10;
+        padding:calc(16px + env(safe-area-inset-top,0)) 14px calc(16px + env(safe-area-inset-bottom,0));
+        overflow-y:auto;}
+  #help.open{display:block;}
+  #helpBox{max-width:420px; margin:0 auto; background:var(--surface1); border:1px solid var(--border);
+           border-radius:16px; padding:16px 16px 18px;}
+  #helpBox h2{font-size:16px; margin:0 0 10px;}
+  #helpBox p{font-size:13.5px; line-height:1.55; margin:0 0 10px; color:var(--text);}
+  #helpBox b{color:var(--accent-text);}
+  .demo{display:flex; align-items:center; justify-content:center; gap:8px; margin:4px 0 12px;}
+  .demo .cell{width:52px; height:52px; aspect-ratio:auto;}
+  .demo .arrow{color:var(--text-dim); font-size:18px;}
+  #helpBox .btnrow{margin-top:14px;}
   .tabs{display:flex; gap:8px; margin-bottom:12px;}
   .tab{flex:1; text-align:center; padding:9px 0; border-radius:10px; border:1px solid var(--border);
        background:var(--surface1); color:var(--text-dim); font-size:14px;}
@@ -63,8 +80,12 @@
 </head>
 <body>
 <div id="app">
-  <h1>Rechenzug</h1>
+  <div class="head">
+    <h1>Rechenzug</h1>
+    <button id="helpBtn" class="iconbtn" aria-label="Anleitung">?</button>
+  </div>
   <div class="tabs">
+    <div class="tab" id="tabLearn">Lernen</div>
     <div class="tab" id="tabDaily">Daily</div>
     <div class="tab" id="tabEndless">Endlos</div>
   </div>
@@ -75,7 +96,8 @@
     <div class="tab" id="diffMaster">Master</div>
     <div class="tab" id="diffOverkill">Overkill</div>
   </div>
-  <p class="rule">Zahl trifft auf Operator: sie verschmelzen zur berechneten Zahl. Gleiche Zahlen oder Division ohne glattes Ergebnis blockieren sich nur.</p>
+  <p class="hint" id="hint" style="display:none;"></p>
+  <p class="rule" id="rule">Wische über das Feld: alle Kacheln rutschen in diese Richtung. Berühren sich eine Zahl (blau) und ein Operator (orange), wird gerechnet. Erreiche die Zielzahl.</p>
   <div class="cards">
     <div class="card"><div class="label">Ziel</div><div class="value" id="goal">–</div></div>
     <div class="card"><div class="label">Züge</div><div class="value"><span id="moves">0</span> <span style="font-size:12px;color:var(--text-dim);">/ min. <span id="minmoves">–</span></span></div></div>
@@ -87,8 +109,30 @@
     <button id="undoBtn">Rückgängig</button>
     <button id="resetBtn">Zurücksetzen</button>
     <button id="newBtn" style="display:none;">Neues Rätsel</button>
+    <button id="nextBtn" style="display:none;">Weiter</button>
   </div>
-  <footer>Rechenzug v0.7.0 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
+  <footer>Rechenzug v0.8.0 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
+</div>
+<div id="help">
+  <div id="helpBox">
+    <h2>So funktioniert Rechenzug</h2>
+    <p><b>Ziel:</b> Erzeuge die Zielzahl (Karte „Ziel“) mit möglichst wenigen Zügen.</p>
+    <p><b>Bewegen:</b> Wische in eine Richtung (am Rechner: Pfeiltasten). Alle Kacheln rutschen dann so weit wie möglich in diese Richtung.</p>
+    <p><b>Rechnen:</b> Berühren sich eine Zahl (blau) und ein Operator (orange), wird gerechnet. Der Operator verschwindet, die Zahl wird zum Ergebnis. Egal, welche von beiden vorne liegt.</p>
+    <div class="demo">
+      <div class="cell n">5</div><div class="cell o">×3</div>
+      <span class="arrow">→</span>
+      <div class="cell n">15</div>
+    </div>
+    <p><b>Operatoren:</b> +N addiert, ×N multipliziert, ÷N teilt (nur wenn es glatt aufgeht, sonst blockiert), x² quadriert die Zahl. Zwei Zahlen oder zwei Operatoren verschmelzen nie.</p>
+    <p><b>Zielarten:</b> „= 24“ heißt genau 24. „20–30“ heißt irgendeine Zahl in diesem Bereich. „≥ 20“ heißt mindestens 20.</p>
+    <p><b>Züge:</b> Links steht, wie viele du gebraucht hast, rechts der Bestwert. Rückgängig kostet einen Zug. Zurücksetzen stellt das Feld zurück, der Zähler läuft weiter.</p>
+    <p><b>Sackgasse:</b> Sind alle Operatoren verbraucht und das Ziel nicht erreicht, hilft nur Rückgängig oder Zurücksetzen.</p>
+    <div class="btnrow">
+      <button id="helpLearn">Tutorial starten</button>
+      <button id="helpClose">Schließen</button>
+    </div>
+  </div>
 </div>
 <script>
 (function(){
@@ -335,6 +379,25 @@ function loadEndless(){
   var puzzle=pickPuzzle(rng, diff);
   S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[];
 }
+
+/* ---------- Tutorial ---------- */
+function tcells(spec){ var c=new Array(CELLS).fill(null); for(var k in spec) c[+k]=spec[k]; return c; }
+var TUTORIAL = [
+  { hint:'Wische nach links oder rechts. Die Kachel 3 und der Operator +4 liegen in einer Zeile und rutschen zusammen: 3 + 4 = 7.',
+    cells:tcells({8:{t:'n',v:3}, 11:{t:'o',op:'+',v:4}}), mode:'exact', target:7, minMoves:1 },
+  { hint:'Es geht auch nach oben und unten. Die 4 und ×3 liegen in einer Spalte. Egal, welche von beiden vorne liegt: sie verschmelzen.',
+    cells:tcells({1:{t:'n',v:4}, 13:{t:'o',op:'x',v:3}}), mode:'exact', target:12, minMoves:1 },
+  { hint:'Hier zählt die Reihenfolge: (2 + 3) × 4 = 20, aber (2 × 4) + 3 = 11. Verrechnest du dich, hilft Rückgängig (kostet einen Zug).',
+    cells:tcells({4:{t:'n',v:2}, 7:{t:'o',op:'+',v:3}, 13:{t:'o',op:'x',v:4}}), mode:'exact', target:20, minMoves:2 },
+  { hint:'Teilen geht nur glatt auf: 12 ÷ 5 klappt nicht, die beiden blockieren sich nur. 12 ÷ 4 = 3 klappt.',
+    cells:tcells({0:{t:'n',v:12}, 3:{t:'o',op:'/',v:5}, 12:{t:'o',op:'/',v:4}}), mode:'exact', target:3, minMoves:1 }
+];
+function loadTutorial(idx){
+  S.tutorialIdx=idx;
+  var t=TUTORIAL[idx];
+  S.puzzle={cells:t.cells, mode:t.mode, target:t.target, minMoves:t.minMoves};
+  S.board=t.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[];
+}
 function goalText(p){
   if(p.mode==='exact') return '= '+p.target;
   if(p.mode==='range') return p.target+'–'+p.target2;
@@ -401,6 +464,15 @@ function render(){
   } else {
     st.className=''; st.textContent='';
   }
+  var isTut = S.mode==='tutorial';
+  var hintEl=document.getElementById('hint');
+  hintEl.style.display = isTut ? 'block' : 'none';
+  if(isTut) hintEl.textContent='Schritt '+(S.tutorialIdx+1)+' von '+TUTORIAL.length+': '+TUTORIAL[S.tutorialIdx].hint;
+  document.getElementById('rule').style.display = isTut ? 'none' : 'block';
+  var nextBtn=document.getElementById('nextBtn');
+  nextBtn.style.display = (isTut && S.won) ? 'block' : 'none';
+  nextBtn.textContent = (S.tutorialIdx===TUTORIAL.length-1) ? 'Zum Daily' : 'Weiter';
+  document.getElementById('tabLearn').className='tab'+(isTut?' active':'');
   document.getElementById('tabDaily').className='tab'+(S.mode==='daily'?' active':'');
   document.getElementById('tabEndless').className='tab'+(S.mode==='endless'?' active':'');
   document.getElementById('newBtn').style.display = S.mode==='endless' ? 'block' : 'none';
@@ -414,7 +486,9 @@ function render(){
 }
 
 /* ---------- Input ---------- */
+var helpEl=document.getElementById('help');
 document.addEventListener('keydown', function(e){
+  if(helpEl.classList.contains('open')) return;
   var m={ArrowLeft:0, ArrowRight:1, ArrowUp:2, ArrowDown:3}[e.key];
   if(m!==undefined){ e.preventDefault(); move(m); }
 });
@@ -438,6 +512,19 @@ function withLoading(fn){
   setTimeout(function(){ fn(); render(); }, 0);
 }
 document.getElementById('newBtn').onclick=function(){ withLoading(loadEndless); };
+document.getElementById('tabLearn').onclick=function(){ S.mode='tutorial'; loadTutorial(0); render(); };
+document.getElementById('nextBtn').onclick=function(){
+  if(S.tutorialIdx<TUTORIAL.length-1){ loadTutorial(S.tutorialIdx+1); }
+  else { S.mode='daily'; loadDaily(); }
+  render();
+};
+function openHelp(){ helpEl.classList.add('open'); }
+function closeHelp(){ helpEl.classList.remove('open'); }
+document.getElementById('helpBtn').onclick=openHelp;
+document.getElementById('helpClose').onclick=closeHelp;
+document.getElementById('helpLearn').onclick=function(){
+  closeHelp(); S.mode='tutorial'; loadTutorial(0); render();
+};
 document.getElementById('tabDaily').onclick=function(){ S.mode='daily'; loadDaily(); render(); };
 document.getElementById('tabEndless').onclick=function(){ S.mode='endless'; withLoading(loadEndless); };
 DIFF_KEYS.forEach(function(k){
@@ -447,6 +534,12 @@ DIFF_KEYS.forEach(function(k){
 /* ---------- Boot ---------- */
 loadDaily();
 render();
+try{
+  if(!localStorage.getItem('rechenzug-help-seen')){
+    localStorage.setItem('rechenzug-help-seen','1');
+    openHelp();
+  }
+}catch(e){ openHelp(); }
 })();
 </script>
 </body>
