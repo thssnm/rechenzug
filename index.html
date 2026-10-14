@@ -145,7 +145,7 @@
     <button id="newBtn" style="display:none;">Neues Rätsel</button>
     <button id="nextBtn" style="display:none;">Weiter</button>
   </div>
-  <footer>Rechenzug v0.9.2 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
+  <footer>Rechenzug v0.9.3 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
 </div>
 <div id="help">
   <div id="helpBox">
@@ -231,7 +231,6 @@ function slideLine(line, logArr){
 }
 function applyMove(board, d, logArr){
   var g=[]; for(var r=0;r<N;r++) g.push(board.slice(r*N,r*N+N));
-  var before=JSON.stringify(g);
   if(d===0||d===1){
     for(var r=0;r<N;r++){
       var l=g[r].slice(); if(d===1) l.reverse();
@@ -247,8 +246,17 @@ function applyMove(board, d, logArr){
     }
   }
   var nb=g.reduce(function(a,row){return a.concat(row);},[]);
-  if(JSON.stringify(nb)===before) return null;
+  if(sameBoard(board, nb)) return null;   // nichts hat sich bewegt: kein Zug
   return nb;
+}
+function sameBoard(a,b){
+  for(var i=0;i<a.length;i++){
+    var x=a[i], y=b[i];
+    if(x===y) continue;
+    if(!x || !y) return false;
+    if(x.t!==y.t || x.v!==y.v || x.op!==y.op) return false;
+  }
+  return true;
 }
 function getVals(board){
   return board.filter(function(c){return c && c.t==='n';}).map(function(c){return c.v;});
@@ -393,7 +401,7 @@ function pickPuzzle(rng, diff){
 }
 
 /* ---------- Game state ---------- */
-var S = { mode:'daily', difficulty:'medium', board:null, puzzle:null, moves:0, won:false, stuck:false, log:'', history:[], trail:'' };
+var S = { mode:'daily', difficulty:'medium', board:null, puzzle:null, moves:0, won:false, stuck:false, log:'', history:[], trail:'', pulse:[] };
 
 function todayKey(){
   var d=new Date();
@@ -406,7 +414,7 @@ function loadDaily(){
   var dk=todayKey();
   var rng=mulberry32(cyrb53('rechenzug-daily-'+dk));
   var puzzle=pickPuzzle(rng, DIFFS.hard);
-  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail='';
+  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail=''; S.pulse=[];
   var saved=null;
   try{ var raw=lsGet('rechenzug-daily-'+dk); saved=raw ? JSON.parse(raw) : null; }catch(e){ saved=null; }
   // Ergebnisse aus Versionen ohne Zugliste lassen sich nicht teilen: verwerfen, dann kann neu gespielt werden.
@@ -416,7 +424,7 @@ function loadEndless(){
   var diff = DIFFS[S.difficulty] || DIFFS.medium;
   var rng=mulberry32(cyrb53('rechenzug-endless-'+Date.now()+'-'+Math.random()));
   var puzzle=pickPuzzle(rng, diff);
-  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail='';
+  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail=''; S.pulse=[];
 }
 
 /* ---------- Tutorial ---------- */
@@ -435,7 +443,7 @@ function loadTutorial(idx){
   S.tutorialIdx=idx;
   var t=TUTORIAL[idx];
   S.puzzle={cells:t.cells, mode:t.mode, target:t.target, minMoves:t.minMoves};
-  S.board=t.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail='';
+  S.board=t.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail=''; S.pulse=[];
 }
 function goalText(p){
   if(p.mode==='exact') return '= '+p.target;
@@ -465,6 +473,9 @@ function move(d){
   var logArr=[];
   var nb=applyMove(S.board, d, logArr);
   if(!nb) return;
+  var pulse=[];
+  nb=nb.map(function(c,i){ if(c && c.m){ pulse.push(i); return {t:c.t, v:c.v}; } return c; });
+  S.pulse=pulse;
   S.history.push({board:S.board, moves:S.moves, log:S.log});
   S.board=nb; S.moves++; S.log=logArr.join('  ·  ');
   S.trail += logArr.length ? 'm' : 's';
@@ -474,7 +485,7 @@ function move(d){
 function undo(){
   if(S.history.length===0 || S.won) return;
   var prev=S.history.pop();
-  S.board=prev.board; S.moves++; S.log='Rückgängig'; S.trail += 'u';
+  S.board=prev.board; S.moves++; S.log='Rückgängig'; S.trail += 'u'; S.pulse=[];
   S.stuck=false;
   checkWin();
   render();
@@ -569,10 +580,10 @@ function render(){
   document.getElementById('log').textContent=S.log;
   document.getElementById('moves').textContent=S.moves;
   boardEl.innerHTML='';
-  S.board.forEach(function(c){
+  S.board.forEach(function(c, idx){
     var d=document.createElement('div');
     if(!c){ d.className='cell empty'; }
-    else if(c.t==='n'){ var txt=fmtNum(c.v); d.className='cell n len'+Math.min(txt.length,6)+(c.m?' merged':''); d.textContent=txt; }
+    else if(c.t==='n'){ var txt=fmtNum(c.v); d.className='cell n len'+Math.min(txt.length,6)+(S.pulse.indexOf(idx)>=0?' merged':''); d.textContent=txt; }
     else { d.className='cell o'; d.textContent=opLabel(c); }
     boardEl.appendChild(d);
   });
@@ -624,7 +635,7 @@ boardEl.addEventListener('touchend', function(e){
   if(Math.abs(dx)>Math.abs(dy)) move(dx>0?1:0); else move(dy>0?3:2);
 });
 document.getElementById('resetBtn').onclick=function(){
-  S.board=S.puzzle.cells.slice(); S.log=''; S.history=[]; S.trail += 'r';
+  S.board=S.puzzle.cells.slice(); S.log=''; S.history=[]; S.trail += 'r'; S.pulse=[];
   checkWin();
   render();
 };
