@@ -100,7 +100,8 @@
   .sq.m{background:#2f9e5b;} .sq.s{background:#c9ccd4;} .sq.u{background:#e0b83a;} .sq.r{background:#d2504b;}
   .legend{font-size:11.5px; color:var(--text-dim); margin-bottom:12px; line-height:1.6;}
   .legend i{display:inline-block; width:10px; height:10px; border-radius:3px; margin:0 4px -1px 8px;}
-  #result .btnrow{margin-top:6px;}
+  #result .btnrow{margin-top:6px; flex-wrap:wrap;}
+  #imgBtn{flex-basis:100%;}
   #toast{min-height:18px; font-size:12.5px; color:var(--ok-text); margin-top:8px;}
   .btnrow{display:flex; gap:10px; margin-top:14px;}
   button{
@@ -150,6 +151,7 @@
     <div class="btnrow">
       <button id="shareBtn">Teilen</button>
       <button id="copyBtn">Kopieren</button>
+      <button id="imgBtn">Als Bild teilen</button>
     </div>
     <div id="toast"></div>
   </div>
@@ -159,7 +161,7 @@
     <button id="newBtn" style="display:none;">Neues Rätsel</button>
     <button id="nextBtn" style="display:none;">Weiter</button>
   </div>
-  <footer>Rechenzug v0.10.0 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
+  <footer>Rechenzug v0.11.0 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
 </div>
 <div id="help">
   <div id="helpBox">
@@ -551,6 +553,7 @@ function renderResult(){
   var tr=document.getElementById('rTrail'); tr.innerHTML='';
   var t=trailRows(r.trail||'');
   if(t.extra>0){ var more=document.createElement('div'); more.className='legend'; more.textContent='\u2026 +'+t.extra+' davor'; tr.appendChild(more); }
+  prepareImage(r);
   t.rows.forEach(function(row){
     var rowEl=document.createElement('div'); rowEl.className='row';
     row.split('').forEach(function(c){ var q=document.createElement('div'); q.className='sq '+c; rowEl.appendChild(q); });
@@ -583,8 +586,95 @@ function doShare(){
   var r=resultData(); if(!r) return;
   var text=shareText(r);
   if(navigator.share){
-    navigator.share({text:text}).catch(function(err){ if(err && err.name!=='AbortError') doCopy(); });
+    navigator.share({title:'Rechenzug #'+dayNumber(), text:text}).catch(function(err){ if(err && err.name!=='AbortError') doCopy(); });
   } else { doCopy(); }
+}
+/* ---------- Ergebnis als Bild teilen ---------- */
+var SQCOL={m:'#2f9e5b', s:'#c9ccd4', u:'#e0b83a', r:'#d2504b'};
+function esc(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// Karte als SVG-Text. Das Logo kommt aus der Kopfzeile (gleiche Kurven, keine Schrift nötig).
+function cardSvg(r){
+  var W=1080, H=1350, FONT="system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+  var logo=document.querySelector('h1 svg'), vb=logo.getAttribute('viewBox').split(' ');
+  var lw=parseFloat(vb[2]);
+  function txt(x,y,size,weight,fill,s,extra){
+    return '<text x="'+x+'" y="'+y+'" font-family="'+FONT+'" font-size="'+size+'" font-weight="'+weight+'" fill="'+fill+'" text-anchor="middle"'+(extra||'')+'>'+esc(s)+'</text>';
+  }
+  var min=S.puzzle.minMoves, t=trailRows(r.trail||''), n=t.rows.length, SZ=96, GAP=12;
+  var out=['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'">',
+    '<rect width="'+W+'" height="'+H+'" fill="#111318"/>',
+    '<g transform="translate('+((W-lw)/2).toFixed(1)+' 70)">'+logo.innerHTML+'</g>',
+    txt(540,262,36,500,'#9aa0ad','Daily #'+dayNumber()+' \u00B7 '+dateDE()),
+    txt(540,360,58,700,'#f0f1f4','Ziel '+goalText(S.puzzle)),
+    txt(540,590,230,800,'#7ec4ff',r.moves),
+    txt(540,660,40,500,'#9aa0ad','Z\u00FCge \u00B7 min. '+min),
+    txt(540,730,40,700,r.moves<=min?'#5fd884':'#f0f1f4',verdict(r.moves,min))];
+  var areaTop=820, areaH=400, gridH=n*SZ+(n>0?(n-1)*GAP:0), y0=areaTop+(areaH-gridH)/2;
+  if(t.extra>0) out.push(txt(540,areaTop-26,28,500,'#9aa0ad','\u2026 +'+t.extra+' davor'));
+  t.rows.forEach(function(row,i){
+    var rowW=row.length*SZ+(row.length-1)*GAP, x0=(W-rowW)/2;
+    row.split('').forEach(function(c,j){
+      out.push('<rect x="'+(x0+j*(SZ+GAP)).toFixed(1)+'" y="'+(y0+i*(SZ+GAP)).toFixed(1)+'" width="'+SZ+'" height="'+SZ+'" rx="18" fill="'+(SQCOL[c]||'#c9ccd4')+'"/>');
+    });
+  });
+  if(/^https?:/.test(location.protocol)) out.push(txt(540,1275,30,500,'#9aa0ad',location.host+location.pathname));
+  out.push('<rect y="'+(H-14)+'" width="'+(W/3)+'" height="14" fill="#7ec4ff"/>',
+           '<rect x="'+(W/3)+'" y="'+(H-14)+'" width="'+(W/3)+'" height="14" fill="#f0b64c"/>',
+           '<rect x="'+(2*W/3)+'" y="'+(H-14)+'" width="'+(W/3)+'" height="14" fill="#5fd884"/>','</svg>');
+  return out.join('');
+}
+function svgToPngBlob(svg, w, h){
+  return new Promise(function(res, rej){
+    var img=new Image();
+    img.onload=function(){
+      try{
+        var c=document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        c.toBlob(function(b){ b ? res(b) : rej(new Error('toBlob')); }, 'image/png');
+      }catch(e){ rej(e); }
+    };
+    img.onerror=function(){ rej(new Error('image')); };
+    img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+  });
+}
+// Das Bild wird schon beim Anzeigen der Ergebniskarte vorbereitet: Teilen muss auf iOS direkt aus dem Tippen kommen.
+var imgCache={key:null, promise:null, file:null};
+function prepareImage(r){
+  var key=shareText(r);
+  if(imgCache.key===key) return imgCache.promise;
+  imgCache.key=key; imgCache.file=null;
+  var name='rechenzug-'+dayNumber()+'.png';
+  var p=svgToPngBlob(cardSvg(r), 1080, 1350).then(function(blob){
+    var f; try{ f=new File([blob], name, {type:'image/png'}); }catch(e){ f=blob; f.name=name; }
+    if(imgCache.key===key) imgCache.file=f;
+    return f;
+  });
+  imgCache.promise=p;
+  p.catch(function(){ if(imgCache.key===key) imgCache.key=null; });   // beim Klick erneut versuchen
+  return p;
+}
+function downloadFile(file){
+  var url=URL.createObjectURL(file), a=document.createElement('a');
+  a.href=url; a.download=file.name||'rechenzug.png';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+}
+function shareFile(file, r){
+  if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+    return navigator.share({files:[file], title:'Rechenzug #'+dayNumber(), text:shareText(r)}).catch(function(err){
+      if(err && err.name==='AbortError') return;
+      downloadFile(file); toast('Bild gespeichert');
+    });
+  }
+  downloadFile(file); toast('Bild gespeichert (Teilen von Bildern nicht m\u00F6glich)');
+  return Promise.resolve();
+}
+function doShareImage(){
+  var r=resultData(); if(!r) return;
+  var pr=prepareImage(r);
+  if(imgCache.file && imgCache.key===shareText(r)){ shareFile(imgCache.file, r); return; }
+  toast('Bild wird erstellt \u2026');
+  pr.then(function(f){ shareFile(f, r); }, function(){ toast('Bild konnte nicht erstellt werden'); });
 }
 // Ab einer Million kompakt anzeigen, damit riesige Quadrat-Ketten nicht aus der Kachel laufen.
 function fmtNum(v){ return v>=1000000 ? v.toExponential(1).replace('+','') : String(v); }
@@ -656,6 +746,7 @@ document.getElementById('resetBtn').onclick=function(){
 document.getElementById('undoBtn').onclick=undo;
 document.getElementById('shareBtn').onclick=doShare;
 document.getElementById('copyBtn').onclick=doCopy;
+document.getElementById('imgBtn').onclick=doShareImage;
 function withLoading(fn){
   var st=document.getElementById('status');
   st.className=''; st.textContent='Rätsel wird generiert …';
