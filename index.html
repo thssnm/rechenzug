@@ -57,6 +57,8 @@
   .tab{flex:1; text-align:center; padding:9px 0; border-radius:10px; border:1px solid var(--border);
        background:var(--surface1); color:var(--text-dim); font-size:14px;}
   .tab.active{background:var(--accent-bg); color:var(--accent-text); border-color:var(--accent-bg);}
+  .tab{cursor:pointer; line-height:1.2;}
+  .tab:focus-visible{outline:2px solid var(--accent-text); outline-offset:2px;}
   .rule{font-size:12.5px; color:var(--text-dim); line-height:1.5; margin:0 0 12px;}
   .cards{display:flex; gap:10px; margin-bottom:10px;}
   .card{flex:1; background:var(--surface1); border-radius:12px; padding:9px 12px;}
@@ -70,6 +72,7 @@
   .cell{
     display:flex; align-items:center; justify-content:center; overflow:hidden;
     border-radius:9px; font-size:32px; font-weight:700; aspect-ratio:1; line-height:1;
+    position:relative; will-change:transform;
   }
   .cell.empty{background:var(--surface2);}
   .cell.n{background:var(--accent-bg); color:var(--accent-text);}
@@ -118,6 +121,19 @@
   }
   button:active{background:var(--surface2);}
   .btnrow button{flex:1;}
+  button:disabled{opacity:.4;}
+  #boardToggle{display:none; width:100%; margin-top:8px;}
+  #solveBtn{display:none;}
+  #imgBtn,#boardBtn{flex-basis:45%;}
+  .stats{display:flex; gap:6px; margin:4px 0 8px; font-size:11px; color:var(--text-dim);}
+  .stats div{flex:1; background:var(--surface2); border-radius:8px; padding:6px 2px;}
+  .stats b{display:block; font-size:17px; color:var(--text);}
+  .dist{display:flex; flex-direction:column; gap:3px; margin:0 auto 8px; font-size:10.5px; color:var(--text-dim);}
+  .dist .bar{display:flex; align-items:center; justify-content:center; gap:6px;}
+  .dist .bar span{width:58px; text-align:right;}
+  .dist .bar i{display:block; height:9px; border-radius:3px; background:var(--accent-text); opacity:.75;}
+  .dist .bar em{font-style:normal; width:16px; text-align:left;}
+  @media (prefers-reduced-motion:reduce){ .cell.merged,#result.fresh{animation:none;} }
   footer{margin-top:18px; font-size:11px; color:var(--text-dim); text-align:center;}
 </style>
 </head>
@@ -127,17 +143,17 @@
     <h1 aria-label="Rechenzug"><svg viewBox="0 0 626.6 120" height="30" aria-hidden="true" focusable="false"><g transform="scale(0.234375)"><rect width="512" height="512" rx="112" fill="#111318"/><g transform="translate(256 256) scale(1.08) translate(-256 -256)"><defs><clipPath id="rzh"><rect x="87" y="87" width="228" height="228" rx="52"/></clipPath></defs><rect x="87" y="87" width="228" height="228" rx="52" fill="#7ec4ff"/><rect x="197" y="197" width="228" height="228" rx="52" fill="#f0b64c"/><rect x="197" y="197" width="228" height="228" rx="52" fill="#5fd884" clip-path="url(#rzh)"/></g></g><path d="M189.3 89.6 177 67.3H173.6V89.6H159.2V30.6H183.3Q190.3 30.6 195.2 33.1Q200.1 35.5 202.6 39.8Q205 44 205 49.2Q205 55.1 201.7 59.7Q198.4 64.3 191.9 66.3L205.5 89.6ZM173.6 57.2H182.5Q186.4 57.2 188.4 55.3Q190.4 53.3 190.4 49.8Q190.4 46.4 188.4 44.5Q186.4 42.6 182.5 42.6H173.6ZM256.9 69.6H224.4Q224.7 74 227.2 76.3Q229.7 78.6 233.3 78.6Q238.7 78.6 240.8 74.1H256.1Q254.9 78.7 251.8 82.4Q248.8 86.1 244.1 88.2Q239.5 90.3 233.8 90.3Q226.9 90.3 221.5 87.3Q216.2 84.4 213.1 78.9Q210.1 73.5 210.1 66.2Q210.1 58.9 213.1 53.4Q216.1 47.9 221.5 45Q226.8 42.1 233.8 42.1Q240.6 42.1 245.9 44.9Q251.2 47.8 254.2 53.1Q257.2 58.4 257.2 65.4Q257.2 67.4 256.9 69.6ZM242.5 61.6Q242.5 57.9 239.9 55.8Q237.4 53.6 233.6 53.6Q230 53.6 227.5 55.7Q225.1 57.8 224.5 61.6ZM284.4 42.1Q293.2 42.1 299.1 46.7Q305 51.3 306.9 59.7H291.6Q289.7 54.3 284.1 54.3Q280.2 54.3 277.8 57.4Q275.5 60.5 275.5 66.2Q275.5 71.9 277.8 75Q280.2 78 284.1 78Q289.7 78 291.6 72.6H306.9Q305 80.9 299.1 85.6Q293.1 90.3 284.4 90.3Q277.5 90.3 272.1 87.3Q266.8 84.4 263.8 78.9Q260.8 73.5 260.8 66.2Q260.8 58.9 263.8 53.4Q266.8 47.9 272.1 45Q277.5 42.1 284.4 42.1ZM360.1 62.2V89.6H345.9V64.2Q345.9 59.5 343.4 56.8Q341 54.2 336.9 54.2Q332.8 54.2 330.3 56.8Q327.9 59.5 327.9 64.2V89.6H313.5V27.4H327.9V49Q330.1 45.9 333.8 44.1Q337.6 42.2 342.3 42.2Q350.4 42.2 355.3 47.6Q360.1 52.9 360.1 62.2ZM413.1 69.6H380.5Q380.9 74 383.4 76.3Q385.8 78.6 389.5 78.6Q394.8 78.6 396.9 74.1H412.2Q411 78.7 408 82.4Q404.9 86.1 400.3 88.2Q395.7 90.3 390 90.3Q383.1 90.3 377.7 87.3Q372.3 84.4 369.3 78.9Q366.3 73.5 366.3 66.2Q366.3 58.9 369.2 53.4Q372.2 47.9 377.6 45Q383 42.1 390 42.1Q396.8 42.1 402.1 44.9Q407.3 47.8 410.3 53.1Q413.3 58.4 413.3 65.4Q413.3 67.4 413.1 69.6ZM398.6 61.6Q398.6 57.9 396.1 55.8Q393.6 53.6 389.8 53.6Q386.2 53.6 383.7 55.7Q381.2 57.8 380.6 61.6ZM466.5 62.2V89.6H452.2V64.2Q452.2 59.5 449.8 56.8Q447.3 54.2 443.2 54.2Q439.1 54.2 436.7 56.8Q434.2 59.5 434.2 64.2V89.6H419.9V42.7H434.2V49Q436.4 45.8 440.1 44Q443.8 42.2 448.4 42.2Q456.7 42.2 461.6 47.6Q466.5 52.9 466.5 62.2Z" fill="#f0f1f4"/><path d="M488.9 77.8H509.2V89.6H472.9V78.2L492.4 54.6H473V42.7H508.8V54.2ZM562.4 42.7V89.6H548V83.2Q545.9 86.3 542.1 88.2Q538.4 90.1 533.8 90.1Q528.5 90.1 524.4 87.7Q520.2 85.3 518 80.8Q515.7 76.3 515.7 70.1V42.7H530V68.2Q530 72.9 532.4 75.5Q534.9 78.1 539 78.1Q543.2 78.1 545.6 75.5Q548 72.9 548 68.2V42.7ZM604 49.4V42.7H618.4V89.5Q618.4 96 615.8 101.2Q613.2 106.5 608 109.6Q602.7 112.7 594.9 112.7Q584.5 112.7 578 107.8Q571.6 102.9 570.6 94.5H584.8Q585.5 97.2 588 98.7Q590.5 100.3 594.2 100.3Q598.7 100.3 601.3 97.7Q604 95.2 604 89.5V82.9Q601.9 86.2 598.2 88.2Q594.5 90.3 589.5 90.3Q583.7 90.3 579 87.3Q574.3 84.3 571.6 78.8Q568.9 73.3 568.9 66.1Q568.9 58.9 571.6 53.4Q574.3 47.9 579 45Q583.7 42.1 589.5 42.1Q594.5 42.1 598.2 44.1Q602 46.1 604 49.4ZM593.7 54.6Q589.5 54.6 586.5 57.6Q583.5 60.7 583.5 66.1Q583.5 71.5 586.5 74.6Q589.5 77.8 593.7 77.8Q598 77.8 601 74.7Q604 71.5 604 66.2Q604 60.8 601 57.7Q598 54.6 593.7 54.6Z" fill="#7ec4ff"/></svg></h1>
     <button id="helpBtn" class="iconbtn" aria-label="Anleitung">?</button>
   </div>
-  <div class="tabs">
-    <div class="tab" id="tabLearn">Lernen</div>
-    <div class="tab" id="tabDaily">Daily</div>
-    <div class="tab" id="tabEndless">Endlos</div>
+  <div class="tabs" role="tablist" aria-label="Modus">
+    <button class="tab" type="button" role="tab" id="tabLearn">Lernen</button>
+    <button class="tab" type="button" role="tab" id="tabDaily">Daily</button>
+    <button class="tab" type="button" role="tab" id="tabEndless">Endlos</button>
   </div>
-  <div class="tabs" id="diffRow" style="display:none; flex-wrap:wrap;">
-    <div class="tab" id="diffEasy">Leicht</div>
-    <div class="tab" id="diffMedium">Mittel</div>
-    <div class="tab" id="diffHard">Schwer</div>
-    <div class="tab" id="diffMaster">Master</div>
-    <div class="tab" id="diffOverkill">Overkill</div>
+  <div class="tabs" id="diffRow" role="tablist" aria-label="Schwierigkeit" style="display:none; flex-wrap:wrap;">
+    <button class="tab" type="button" role="tab" id="diffEasy">Leicht</button>
+    <button class="tab" type="button" role="tab" id="diffMedium">Mittel</button>
+    <button class="tab" type="button" role="tab" id="diffHard">Schwer</button>
+    <button class="tab" type="button" role="tab" id="diffMaster">Master</button>
+    <button class="tab" type="button" role="tab" id="diffOverkill">Overkill</button>
   </div>
   <p class="hint" id="hint" style="display:none;"></p>
   <p class="rule" id="rule">Wische über das Feld: alle Kacheln rutschen in diese Richtung. Berühren sich eine Zahl (blau) und ein Operator (orange), wird gerechnet. Erreiche die Zielzahl.</p>
@@ -155,31 +171,36 @@
     <div class="legend">
       <i style="background:#2f9e5b"></i>gerechnet<i style="background:#c9ccd4"></i>geschoben<i style="background:#e0b83a"></i>rückgängig<i style="background:#d2504b"></i>Reset
     </div>
+    <div class="stats" id="rStats"></div>
+    <div class="dist" id="rDist"></div>
     <div class="rnote">Für heute gelöst. Morgen kommt ein neues Rätsel.</div>
     <div id="manual"><div class="rnote" id="manualNote"></div><textarea id="manualArea" readonly aria-label="Ergebnistext zum Kopieren"></textarea></div>
     <div class="btnrow">
       <button id="shareBtn">Teilen</button>
       <button id="copyBtn">Kopieren</button>
       <button id="imgBtn">Als Bild teilen</button>
+      <button id="boardBtn">Brett ansehen</button>
     </div>
     <div id="toast"></div>
   </div>
   </div>
+  <button id="boardToggle" type="button">Ergebnis anzeigen</button>
   <div id="log"></div>
   <div id="status"></div>
   <div class="btnrow" id="mainBtns">
     <button id="undoBtn">Rückgängig</button>
     <button id="resetBtn">Zurücksetzen</button>
     <button id="newBtn" style="display:none;">Neues Rätsel</button>
+    <button id="solveBtn">Lösung zeigen</button>
     <button id="nextBtn" style="display:none;">Weiter</button>
   </div>
-  <footer>Rechenzug v0.12.1 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
+  <footer>Rechenzug v0.13.0 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
 </div>
 <div id="help">
   <div id="helpBox">
     <h2>So funktioniert Rechenzug</h2>
     <p><b>Ziel:</b> Erzeuge die Zielzahl (Karte „Ziel“) mit möglichst wenigen Zügen.</p>
-    <p><b>Bewegen:</b> Wische in eine Richtung (am Rechner: Pfeiltasten). Alle Kacheln rutschen dann so weit wie möglich in diese Richtung.</p>
+    <p><b>Bewegen:</b> Wische in eine Richtung (am Rechner: Pfeiltasten, WASD oder mit der Maus über das Brett ziehen). Alle Kacheln rutschen dann so weit wie möglich in diese Richtung.</p>
     <p><b>Rechnen:</b> Berühren sich eine Zahl (blau) und ein Operator (orange), wird gerechnet. Der Operator verschwindet, die Zahl wird zum Ergebnis. Egal, welche von beiden vorne liegt.</p>
     <div class="demo">
       <div class="cell n">5</div><div class="cell o">×3</div>
@@ -198,6 +219,10 @@
 </div>
 <script>
 (function(){
+"use strict";
+// Alles, was zum Rechnen und Generieren nötig ist, steckt in coreLib: so kann derselbe Code
+// auch in einem Web Worker laufen (Generierung im Hintergrund, Oberfläche bleibt flüssig).
+function coreLib(){
 "use strict";
 var N=4, CELLS=16, MAXDEPTH=7, STATE_CAP=20000;
 
@@ -247,7 +272,9 @@ function slideLine(line, logArr){
         var nv=apply(numTok,opTok);
         if(nv!==null){
           if(logArr) logArr.push(numTok.v+' '+opLabel(opTok)+' = '+nv);
-          out.push({t:'n', v:nv, m:true});
+          var merged={t:'n', v:nv, m:true};
+          if(numTok.src!==undefined) merged.src=[numTok.src, opTok.src];
+          out.push(merged);
           i+=2; continue;
         }
       }
@@ -257,8 +284,11 @@ function slideLine(line, logArr){
   while(out.length<N) out.push(null);
   return out;
 }
-function applyMove(board, d, logArr){
-  var g=[]; for(var r=0;r<N;r++) g.push(board.slice(r*N,r*N+N));
+function applyMove(board, d, logArr, track){
+  // track: jede Kachel merkt sich ihren Startindex (src), damit die Oberfläche den Zug animieren kann
+  var src=board;
+  if(track) src=board.map(function(c,i){ return c ? Object.assign({},c,{src:i}) : null; });
+  var g=[]; for(var r=0;r<N;r++) g.push(src.slice(r*N,r*N+N));
   if(d===0||d===1){
     for(var r=0;r<N;r++){
       var l=g[r].slice(); if(d===1) l.reverse();
@@ -371,7 +401,7 @@ function minDepthInRange(map, lo, hi){
 function solveTargetPath(board, winFn, maxDepth, cap){
   cap = cap || STATE_CAP;
   var startKey=key(board);
-  if(winFn(board)) return {depth:0, merges:0};
+  if(winFn(board)) return {depth:0, merges:0, path:[]};
   var parent={}; parent[startKey]=null;
   var queue=[[board,0]], qi=0;
   while(qi<queue.length){
@@ -383,11 +413,11 @@ function solveTargetPath(board, winFn, maxDepth, cap){
       if(!n) continue;
       var k=key(n);
       if(parent.hasOwnProperty(k)) continue;
-      parent[k]={prev:key(s), merges:logArr.length};
+      parent[k]={prev:key(s), merges:logArr.length, dir:m};
       if(winFn(n)){
-        var total=0, cursor=k;
-        while(parent[cursor]){ total+=parent[cursor].merges; cursor=parent[cursor].prev; }
-        return {depth:d+1, merges:total};
+        var total=0, path=[], cursor=k;
+        while(parent[cursor]){ total+=parent[cursor].merges; path.unshift(parent[cursor].dir); cursor=parent[cursor].prev; }
+        return {depth:d+1, merges:total, path:path};
       }
       if(Object.keys(parent).length<cap) queue.push([n,d+1]);
     }
@@ -423,13 +453,51 @@ function pickPuzzle(rng, diff){
     if(!res || res.merges<diff.minMerges) continue;
     candidate.cells=board;
     candidate.merges=res.merges;
+    candidate.path=res.path;
     return candidate;
   }
   return FALLBACK;
 }
+// Ist das Ziel von diesem Brett aus noch erreichbar? Nur ein vollständig durchsuchter Zustandsraum ohne
+// Treffer gilt als Sackgasse. Wird das Limit erreicht, bleibt die Antwort "unbekannt" (true), nie ein falscher Alarm.
+function stillReachable(board, puzzle, cap){
+  cap=cap||3000;
+  if(winCheck(board,puzzle)) return true;
+  var seen={}; seen[key(board)]=1;
+  var queue=[board], qi=0;
+  while(qi<queue.length){
+    var s=queue[qi++];
+    for(var m=0;m<4;m++){
+      var n=applyMove(s,m,null); if(!n) continue;
+      var k=key(n); if(seen[k]) continue;
+      seen[k]=1;
+      if(winCheck(n,puzzle)) return true;
+      queue.push(n);
+      if(queue.length>=cap) return true;
+    }
+  }
+  return false;
+}
+// Mehrere Startwerte probieren, bevor das Notfall-Rätsel kommt (bei Overkill schlägt ein einzelner Lauf öfter fehl).
+function generatePuzzle(seed, diff){
+  for(var k=0;k<6;k++){
+    var p=pickPuzzle(mulberry32(cyrb53(seed+(k ? '#'+k : ''))), diff);
+    if(p!==FALLBACK) return p;
+  }
+  return FALLBACK;
+}
+return {N:N, CELLS:CELLS, DIFFS:DIFFS, generatePuzzle:generatePuzzle, DIFF_KEYS:DIFF_KEYS, DIFF_IDS:DIFF_IDS, FALLBACK:FALLBACK,
+        cyrb53:cyrb53, mulberry32:mulberry32, opLabel:opLabel, applyMove:applyMove, getVals:getVals, key:key,
+        winCheck:winCheck, solveTargetPath:solveTargetPath, pickPuzzle:pickPuzzle, stillReachable:stillReachable};
+}
+var C=coreLib();
+var N=C.N, CELLS=C.CELLS, DIFFS=C.DIFFS, DIFF_KEYS=C.DIFF_KEYS, DIFF_IDS=C.DIFF_IDS, FALLBACK=C.FALLBACK,
+    cyrb53=C.cyrb53, mulberry32=C.mulberry32, opLabel=C.opLabel, applyMove=C.applyMove, getVals=C.getVals, key=C.key,
+    winCheck=C.winCheck, solveTargetPath=C.solveTargetPath, pickPuzzle=C.pickPuzzle, generatePuzzle=C.generatePuzzle, stillReachable=C.stillReachable;
 
 /* ---------- Game state ---------- */
-var S = { mode:'daily', difficulty:'medium', board:null, puzzle:null, moves:0, won:false, stuck:false, log:'', history:[], trail:'', pulse:[], dailyKey:null, justWon:false };
+var S = { mode:'daily', difficulty:'medium', board:null, puzzle:null, moves:0, won:false, stuck:false, log:'', history:[], trail:'', pulse:[], dailyKey:null, justWon:false,
+          showBoard:false, solving:false, revealed:false, genId:0, tutorialIdx:0 };
 
 function todayKey(){
   var d=new Date();
@@ -438,21 +506,83 @@ function todayKey(){
 // Browser-Speicher kann gesperrt sein (manche In-App-Browser, file://): dann läuft das Spiel einfach ohne Speichern.
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+function resetRun(){ S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail=''; S.pulse=[]; S.justWon=false; S.solving=false; S.revealed=false; }
+
+/* ---------- Daily-Fortschritt speichern (Reload oder App-Wechsel kostet keine Züge mehr) ---------- */
+function progressKey(dk){ return 'rechenzug-progress-'+dk; }
+function saveProgress(){
+  if(S.mode!=='daily' || !S.puzzle || S.dailyDone || S.won) return;
+  lsSet(progressKey(S.dailyKey), JSON.stringify({board:S.board, moves:S.moves, log:S.log, history:S.history, trail:S.trail}));
+}
+function restoreProgress(dk){
+  try{
+    var raw=lsGet(progressKey(dk)); if(!raw) return;
+    var p=JSON.parse(raw);
+    if(!p || !Array.isArray(p.board) || p.board.length!==CELLS) return;
+    var hist=Array.isArray(p.history) ? p.history : [];
+    // Passt der Stand noch zum heutigen Rätsel? (Schutz vor Generator-Änderungen zwischen Versionen)
+    var base = hist.length ? hist[0].board : p.board;
+    if(!Array.isArray(base) || key(base)!==key(S.puzzle.cells)) return;
+    S.board=p.board; S.moves=p.moves|0; S.log=p.log||''; S.history=hist; S.trail=typeof p.trail==='string' ? p.trail : '';
+    checkWin();
+  }catch(e){}
+}
+function cleanOldProgress(dk){
+  try{
+    var rm=[];
+    for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k && k.indexOf('rechenzug-progress-')===0 && k!==progressKey(dk)) rm.push(k); }
+    rm.forEach(function(k){ localStorage.removeItem(k); });
+  }catch(e){}
+}
+
+/* ---------- Generierung im Hintergrund ---------- */
+var genWorker=null, genReq=0, genCb={};
+function makeWorker(){
+  if(typeof Worker==='undefined' || typeof Blob==='undefined' || typeof URL==='undefined' || !URL.createObjectURL) return null;
+  try{
+    var src=coreLib.toString()+'\nvar C=coreLib();\nonmessage=function(e){ var d=e.data; var p=C.generatePuzzle(d.seed, C.DIFFS[d.diff]||C.DIFFS.medium); postMessage({id:d.id, puzzle:p}); };';
+    var w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+    w.onmessage=function(e){ var cb=genCb[e.data.id]; delete genCb[e.data.id]; if(cb) cb(e.data.puzzle); };
+    w.onerror=function(){ genWorker=false; var pend=genCb; genCb={}; for(var id in pend) pend[id](null); };   // Worker kaputt (z. B. file://): synchron weiter
+    return w;
+  }catch(e){ return null; }
+}
+function generate(seed, diffKey, cb){
+  if(genWorker===null) genWorker=makeWorker()||false;
+  var id=++genReq;
+  function sync(){ return generatePuzzle(seed, DIFFS[diffKey]||DIFFS.medium); }
+  if(genWorker){
+    genCb[id]=function(p){ cb(p===null ? sync() : p, id); };
+    genWorker.postMessage({id:id, seed:seed, diff:diffKey});
+  } else {
+    setTimeout(function(){ cb(sync(), id); }, 0);
+  }
+  return id;
+}
+
 function loadDaily(){
-  var dk=todayKey(); S.dailyKey=dk;
-  var rng=mulberry32(cyrb53('rechenzug-daily-'+dk));
-  var puzzle=pickPuzzle(rng, DIFFS.hard);
-  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail=''; S.pulse=[]; S.justWon=false;
+  var dk=todayKey(); S.dailyKey=dk; S.puzzle=null; S.board=null; S.showBoard=false;
+  resetRun();
   var saved=null;
   try{ var raw=lsGet('rechenzug-daily-'+dk); saved=raw ? JSON.parse(raw) : null; }catch(e){ saved=null; }
   // Ergebnisse aus Versionen ohne Zugliste lassen sich nicht teilen: verwerfen, dann kann neu gespielt werden.
   S.dailyDone = (saved && typeof saved.trail==='string') ? saved : null;
+  cleanOldProgress(dk);
+  S.genId=generate('rechenzug-daily-'+dk, 'hard', function(puzzle, id){
+    if(id!==S.genId || S.mode!=='daily') return;   // inzwischen etwas anderes geladen
+    S.puzzle=puzzle; S.board=puzzle.cells.slice();
+    if(!S.dailyDone) restoreProgress(dk);
+    render();
+  });
 }
 function loadEndless(){
-  var diff = DIFFS[S.difficulty] || DIFFS.medium;
-  var rng=mulberry32(cyrb53('rechenzug-endless-'+Date.now()+'-'+Math.random()));
-  var puzzle=pickPuzzle(rng, diff);
-  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail=''; S.pulse=[]; S.justWon=false;
+  S.puzzle=null; S.board=null;
+  resetRun();
+  S.genId=generate('rechenzug-endless-'+Date.now()+'-'+Math.random(), S.difficulty, function(puzzle, id){
+    if(id!==S.genId || S.mode!=='endless') return;
+    S.puzzle=puzzle; S.board=puzzle.cells.slice();
+    render();
+  });
 }
 
 /* ---------- Tutorial ---------- */
@@ -471,7 +601,7 @@ function loadTutorial(idx){
   S.tutorialIdx=idx;
   var t=TUTORIAL[idx];
   S.puzzle={cells:t.cells, mode:t.mode, target:t.target, minMoves:t.minMoves};
-  S.board=t.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail=''; S.pulse=[]; S.justWon=false;
+  S.board=t.cells.slice(); resetRun();
 }
 function goalText(p){
   if(p.mode==='exact') return '= '+p.target;
@@ -484,41 +614,89 @@ function hasOperators(board){
 // Nach einem gelösten Daily ist es für den Tag gesperrt (kein erneutes Spielen). Weiterüben geht in Endlos und Lernen.
 function isLocked(){ return S.mode==='daily' && (S.won || !!S.dailyDone); }
 function checkWin(){
-  var p=S.puzzle;
+  var p=S.puzzle; if(!p) return;
   var ok = winCheck(S.board, p);
   S.won=ok;
-  S.stuck = !ok && !hasOperators(S.board);
-  if(ok && S.mode==='daily'){
+  // Sackgasse: keine Operatoren mehr, oder der (kleine, vollständig durchsuchte) Zustandsraum enthält das Ziel nicht mehr
+  S.stuck = !ok && (!hasOperators(S.board) || !stillReachable(S.board, p));
+  if(ok && S.mode==='daily' && !S.revealed){
     var dk=todayKey();
     if(!S.dailyDone){
       var rec={moves:S.moves, trail:S.trail};
       lsSet('rechenzug-daily-'+dk, JSON.stringify(rec));
       S.dailyDone=rec;
       S.justWon=true;
+      updateStats(S.moves, p.minMoves, dk);
+      try{ localStorage.removeItem(progressKey(dk)); }catch(e){}
     }
   }
 }
-function move(d){
-  if(S.won || isLocked()) return;
+function cleanCell(c){ if(!c) return null; var o={t:c.t}; if(c.v!==undefined) o.v=c.v; if(c.op) o.op=c.op; return o; }
+function move(d, force){
+  if(!S.puzzle || S.won || isLocked() || (S.solving && !force)) return;
+  finishAnim();
   var logArr=[];
-  var nb=applyMove(S.board, d, logArr);
+  var nb=applyMove(S.board, d, logArr, true);
   if(!nb) return;
-  var pulse=[];
-  nb=nb.map(function(c,i){ if(c && c.m){ pulse.push(i); return {t:c.t, v:c.v}; } return c; });
+  var pulse=[], srcMap=[];
+  nb=nb.map(function(c,i){ if(!c) return null; srcMap[i]=c.src; if(c.m) pulse.push(i); return cleanCell(c); });
   S.pulse=pulse;
   S.history.push({board:S.board, moves:S.moves, log:S.log});
   S.board=nb; S.moves++; S.log=logArr.join('  ·  ');
   S.trail += logArr.length ? 'm' : 's';
   checkWin();
-  render();
+  animateSlide(srcMap, render);
 }
 function undo(){
-  if(S.history.length===0 || S.won || isLocked()) return;
+  if(!S.puzzle || S.history.length===0 || S.won || isLocked() || S.solving) return;
+  finishAnim();
   var prev=S.history.pop();
   S.board=prev.board; S.moves++; S.log='Rückgängig'; S.trail += 'u'; S.pulse=[];
   S.stuck=false;
   checkWin();
   render();
+}
+// Lösung abspielen (nur Endlos). Der Weg kommt aus dem Generator; beim Fallback-Rätsel wird er hier gesucht.
+function showSolution(){
+  if(S.mode!=='endless' || !S.puzzle || S.solving) return;
+  var path=S.puzzle.path;
+  if(!path){ var res=solveTargetPath(S.puzzle.cells, function(b){ return winCheck(b, S.puzzle); }, 14, 50000); path=res ? res.path : null; }
+  if(!path || !path.length) return;
+  finishAnim();
+  S.board=S.puzzle.cells.slice(); resetRun(); S.solving=true; S.revealed=true;
+  render();
+  var i=0, myGen=S.genId;
+  function step(){
+    if(S.mode!=='endless' || !S.solving || S.genId!==myGen) return;
+    if(i>=path.length || S.won){ S.solving=false; render(); return; }
+    move(path[i++], true);
+    setTimeout(step, 550);
+  }
+  setTimeout(step, 400);
+}
+
+/* ---------- Rutsch-Animation (FLIP auf den alten Kacheln, danach wird neu gerendert) ---------- */
+var reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+var animTimer=null, animDone=null;
+function finishAnim(){ if(animTimer){ clearTimeout(animTimer); animTimer=null; var f=animDone; animDone=null; f(); } }
+function animateSlide(srcMap, done){
+  var kids=boardEl.children;
+  if(reduceMotion || kids.length!==CELLS){ done(); return; }
+  var rects=[]; for(var i=0;i<CELLS;i++) rects.push(kids[i].getBoundingClientRect());
+  var any=false;
+  srcMap.forEach(function(src,j){
+    (Array.isArray(src) ? src : [src]).forEach(function(s){
+      if(s===undefined || s===j) return;
+      var el=kids[s];
+      el.style.zIndex='2';
+      el.style.transition='transform 110ms ease-out';
+      el.style.transform='translate('+(rects[j].left-rects[s].left).toFixed(1)+'px,'+(rects[j].top-rects[s].top).toFixed(1)+'px)';
+      any=true;
+    });
+  });
+  if(!any){ done(); return; }
+  animDone=done;
+  animTimer=setTimeout(function(){ animTimer=null; animDone=null; done(); }, 120);
 }
 
 /* ---------- Render ---------- */
@@ -543,23 +721,55 @@ function verdict(moves, min){
   if(moves<=Math.ceil(min*1.5)) return 'Gut';
   return 'Geschafft';
 }
+var VERDICTS=['Perfekt','Sehr gut','Gut','Geschafft'];
+function verdictIdx(moves, min){
+  if(moves<=min) return 0;
+  if(moves<=min+2) return 1;
+  if(moves<=Math.ceil(min*1.5)) return 2;
+  return 3;
+}
+function dayMs(k){ var a=k.split('-'); return Date.UTC(+a[0], +a[1]-1, +a[2]); }
+function loadStats(){
+  try{ var s=JSON.parse(lsGet('rechenzug-stats')||'null'); if(s && typeof s==='object') return s; }catch(e){}
+  return {played:0, perfect:0, streak:0, maxStreak:0, lastDay:null, dist:{}};
+}
+function updateStats(moves, min, dk){
+  var s=loadStats();
+  if(s.lastDay===dk) return;
+  s.played=(s.played||0)+1;
+  var vi=verdictIdx(moves, min);
+  if(vi===0) s.perfect=(s.perfect||0)+1;
+  s.dist=s.dist||{}; s.dist[vi]=(s.dist[vi]||0)+1;
+  s.streak = (s.lastDay && dayMs(dk)-dayMs(s.lastDay)===86400000) ? (s.streak||0)+1 : 1;
+  s.maxStreak=Math.max(s.maxStreak||0, s.streak);
+  s.lastDay=dk;
+  lsSet('rechenzug-stats', JSON.stringify(s));
+}
+// Eine Serie zählt nur, wenn heute oder gestern gelöst wurde.
+function currentStreak(s){
+  if(!s.lastDay) return 0;
+  return (dayMs(todayKey())-dayMs(s.lastDay))<=86400000 ? (s.streak||0) : 0;
+}
 function resultData(){
   if(S.mode!=='daily') return null;
   if(S.won) return {moves:S.moves, trail:S.trail};
   return S.dailyDone || null;
 }
 function shareText(r){
-  var t=trailRows(r.trail||'');
+  var t=trailRows(r.trail||''), streak=currentStreak(loadStats());
   var lines=['Rechenzug #'+dayNumber()+' \u00B7 '+dateDE(),
-             'Ziel '+goalText(S.puzzle)+' \u00B7 '+r.moves+' Z\u00FCge (min. '+S.puzzle.minMoves+')'];
+             'Ziel '+goalText(S.puzzle)+' \u00B7 '+r.moves+' Z\u00FCge (min. '+S.puzzle.minMoves+')'+(streak>1 ? ' \u00B7 Serie '+streak : '')];
   if(t.extra>0) lines.push('\u2026 +'+t.extra);
   t.rows.forEach(function(row){ lines.push(row.split('').map(function(c){return EMOJI[c]||'';}).join('')); });
   if(/^https?:/.test(location.protocol)) lines.push(location.origin+location.pathname);
   return lines.join('\n');
 }
 function renderResult(){
-  var box=document.getElementById('result'), r=resultData();
-  if(!r){ box.style.display='none'; box.className=''; fitResult(); return; }
+  var box=document.getElementById('result'), tg=document.getElementById('boardToggle');
+  var r=S.puzzle ? resultData() : null;
+  if(!r){ box.style.display='none'; box.className=''; tg.style.display='none'; fitResult(); return; }
+  if(S.showBoard){ box.style.display='none'; box.className=''; tg.style.display='block'; fitResult(); return; }
+  tg.style.display='none';
   box.style.display='flex';
   box.className = S.justWon ? 'fresh' : ''; S.justWon=false;   // Einblenden nur direkt nach dem Lösen
   document.getElementById('manual').style.display='none';
@@ -574,6 +784,22 @@ function renderResult(){
     var rowEl=document.createElement('div'); rowEl.className='row';
     row.split('').forEach(function(c){ var q=document.createElement('div'); q.className='sq '+c; rowEl.appendChild(q); });
     tr.appendChild(rowEl);
+  });
+  // Statistik: Serie, gespielte Tage, Verteilung der Bewertungen
+  var s=loadStats(), stEl=document.getElementById('rStats'); stEl.innerHTML='';
+  [['Serie',currentStreak(s)],['Rekord',s.maxStreak||0],['Gespielt',s.played||0],['Perfekt',s.perfect||0]].forEach(function(x){
+    var d=document.createElement('div'), b=document.createElement('b');
+    b.textContent=x[1]; d.appendChild(b); d.appendChild(document.createTextNode(x[0])); stEl.appendChild(d);
+  });
+  var dEl=document.getElementById('rDist'); dEl.innerHTML='';
+  var mx=1; VERDICTS.forEach(function(_,i){ mx=Math.max(mx, (s.dist&&s.dist[i])||0); });
+  VERDICTS.forEach(function(lab,i){
+    var n=(s.dist&&s.dist[i])||0;
+    var row=document.createElement('div'); row.className='bar';
+    var sp=document.createElement('span'); sp.textContent=lab;
+    var bar=document.createElement('i'); bar.style.width=Math.max(2, Math.round(110*n/mx))+'px';
+    var cnt=document.createElement('em'); cnt.textContent=n;
+    row.appendChild(sp); row.appendChild(bar); row.appendChild(cnt); dEl.appendChild(row);
   });
   fitResult();   // erst messen, wenn die Karte befüllt ist
 }
@@ -720,15 +946,21 @@ function doShareImage(){
 }
 // Ab einer Million kompakt anzeigen, damit riesige Quadrat-Ketten nicht aus der Kachel laufen.
 function fmtNum(v){ return v>=1000000 ? v.toExponential(1).replace('+','') : String(v); }
+function setTab(id, on){
+  var el=document.getElementById(id);
+  el.className='tab'+(on ? ' active' : '');
+  el.setAttribute('aria-selected', on ? 'true' : 'false');
+}
 function render(){
-  document.getElementById('goal').textContent=goalText(S.puzzle);
-  document.getElementById('minmoves').textContent=S.puzzle.minMoves;
+  var p=S.puzzle;
+  document.getElementById('goal').textContent = p ? goalText(p) : '–';
+  document.getElementById('minmoves').textContent = p ? p.minMoves : '–';
   document.getElementById('log').textContent=S.log;
   var locked=isLocked(), lr=locked ? resultData() : null;
   document.getElementById('moves').textContent=lr ? lr.moves : S.moves;
   document.getElementById('mainBtns').style.display = locked ? 'none' : 'flex';
   boardEl.innerHTML='';
-  S.board.forEach(function(c, idx){
+  (S.board || new Array(CELLS).fill(null)).forEach(function(c, idx){
     var d=document.createElement('div');
     if(!c){ d.className='cell empty'; }
     else if(c.t==='n'){ var txt=fmtNum(c.v); d.className='cell n len'+Math.min(txt.length,6)+(S.pulse.indexOf(idx)>=0?' merged':''); d.textContent=txt; }
@@ -736,7 +968,13 @@ function render(){
     boardEl.appendChild(d);
   });
   var st=document.getElementById('status');
-  if(S.won){
+  if(!p){
+    st.className=''; st.textContent='Rätsel wird generiert …';
+  } else if(S.won && S.revealed){
+    st.className='daily'; st.textContent='Lösung in '+S.moves+' Zügen gezeigt';
+  } else if(S.solving){
+    st.className='daily'; st.textContent='Lösung wird abgespielt …';
+  } else if(S.won){
     st.className='ok'; st.textContent='Geschafft in '+S.moves+' Zügen';
   } else if(S.stuck){
     st.className='stuck'; st.textContent='Ziel nicht mehr erreichbar — rückgängig oder zurücksetzen';
@@ -753,38 +991,51 @@ function render(){
   var nextBtn=document.getElementById('nextBtn');
   nextBtn.style.display = (isTut && S.won) ? 'block' : 'none';
   nextBtn.textContent = (S.tutorialIdx===TUTORIAL.length-1) ? 'Zum Daily' : 'Weiter';
-  document.getElementById('tabLearn').className='tab'+(isTut?' active':'');
-  document.getElementById('tabDaily').className='tab'+(S.mode==='daily'?' active':'');
-  document.getElementById('tabEndless').className='tab'+(S.mode==='endless'?' active':'');
+  setTab('tabLearn', isTut); setTab('tabDaily', S.mode==='daily'); setTab('tabEndless', S.mode==='endless');
   document.getElementById('newBtn').style.display = S.mode==='endless' ? 'block' : 'none';
+  var solveBtn=document.getElementById('solveBtn');
+  solveBtn.style.display = S.mode==='endless' ? 'block' : 'none';
+  solveBtn.disabled = !p || S.solving;
+  document.getElementById('newBtn').disabled = S.mode==='endless' && !p;
   document.getElementById('diffRow').style.display = S.mode==='endless' ? 'flex' : 'none';
-  DIFF_KEYS.forEach(function(k){
-    document.getElementById(DIFF_IDS[k]).className='tab'+(S.difficulty===k?' active':'');
-  });
+  DIFF_KEYS.forEach(function(k){ setTab(DIFF_IDS[k], S.difficulty===k); });
   renderResult();
-  var undoDisabled = S.history.length===0 || S.won;
-  document.getElementById('undoBtn').disabled = undoDisabled;
-  document.getElementById('undoBtn').style.opacity = undoDisabled ? 0.4 : 1;
+  document.getElementById('undoBtn').disabled = !p || S.history.length===0 || S.won || S.solving;
+  document.getElementById('resetBtn').disabled = !p || S.solving;
+  saveProgress();
 }
 
 /* ---------- Input ---------- */
 var helpEl=document.getElementById('help');
+var KEYMAP={ArrowLeft:0, ArrowRight:1, ArrowUp:2, ArrowDown:3, a:0, d:1, w:2, s:3, A:0, D:1, W:2, S:3};
 document.addEventListener('keydown', function(e){
   if(helpEl.classList.contains('open')) return;
-  var m={ArrowLeft:0, ArrowRight:1, ArrowUp:2, ArrowDown:3}[e.key];
+  if(e.ctrlKey || e.metaKey || e.altKey) return;
+  var tg=e.target; if(tg && (tg.tagName==='TEXTAREA' || tg.tagName==='INPUT')) return;
+  var m=KEYMAP[e.key];
   if(m!==undefined){ e.preventDefault(); move(m); }
 });
-var sx, sy;
-boardEl.addEventListener('touchstart', function(e){ sx=e.touches[0].clientX; sy=e.touches[0].clientY; });
-boardEl.addEventListener('touchend', function(e){
-  if(sx===undefined) return;
-  var dx=e.changedTouches[0].clientX-sx, dy=e.changedTouches[0].clientY-sy;
+function swipe(dx, dy){
   if(Math.max(Math.abs(dx),Math.abs(dy))<20) return;
   if(Math.abs(dx)>Math.abs(dy)) move(dx>0?1:0); else move(dy>0?3:2);
+}
+var sx, sy;
+boardEl.addEventListener('touchstart', function(e){ sx=e.touches[0].clientX; sy=e.touches[0].clientY; }, {passive:true});
+boardEl.addEventListener('touchend', function(e){
+  if(sx===undefined) return;
+  var t=e.changedTouches[0]; swipe(t.clientX-sx, t.clientY-sy); sx=sy=undefined;
+});
+// Am Rechner: mit der Maus über das Brett ziehen
+var mx, my;
+boardEl.addEventListener('mousedown', function(e){ if(e.button!==0) return; mx=e.clientX; my=e.clientY; e.preventDefault(); });
+document.addEventListener('mouseup', function(e){
+  if(mx===undefined) return;
+  var dx=e.clientX-mx, dy=e.clientY-my; mx=my=undefined; swipe(dx, dy);
 });
 document.getElementById('resetBtn').onclick=function(){
-  if(isLocked()) return;
-  S.board=S.puzzle.cells.slice(); S.log=''; S.history=[]; S.trail += 'r'; S.pulse=[];
+  if(!S.puzzle || isLocked() || S.solving) return;
+  finishAnim();
+  S.board=S.puzzle.cells.slice(); S.log=''; S.history=[]; S.trail += 'r'; S.pulse=[]; S.revealed=false;
   checkWin();
   render();
 };
@@ -792,13 +1043,13 @@ document.getElementById('undoBtn').onclick=undo;
 document.getElementById('shareBtn').onclick=doShare;
 document.getElementById('copyBtn').onclick=doCopy;
 document.getElementById('imgBtn').onclick=doShareImage;
-function withLoading(fn){
-  var st=document.getElementById('status');
-  st.className=''; st.textContent='Rätsel wird generiert …';
-  setTimeout(function(){ fn(); render(); }, 0);
-}
+document.getElementById('boardBtn').onclick=function(){ S.showBoard=true; render(); };
+document.getElementById('boardToggle').onclick=function(){ S.showBoard=false; render(); };
+document.getElementById('solveBtn').onclick=showSolution;
+function withLoading(fn){ fn(); render(); }   // render zeigt „wird generiert“, bis der Worker fertig ist
 document.getElementById('newBtn').onclick=function(){ withLoading(loadEndless); };
-document.getElementById('tabLearn').onclick=function(){ S.mode='tutorial'; loadTutorial(0); render(); };
+// Ein Tipp auf den bereits aktiven Tab tut nichts (sonst ging der laufende Stand verloren)
+document.getElementById('tabLearn').onclick=function(){ if(S.mode==='tutorial') return; S.mode='tutorial'; loadTutorial(0); render(); };
 document.getElementById('nextBtn').onclick=function(){
   if(S.tutorialIdx<TUTORIAL.length-1){ loadTutorial(S.tutorialIdx+1); }
   else { S.mode='daily'; loadDaily(); }
@@ -811,10 +1062,10 @@ document.getElementById('helpClose').onclick=closeHelp;
 document.getElementById('helpLearn').onclick=function(){
   closeHelp(); S.mode='tutorial'; loadTutorial(0); render();
 };
-document.getElementById('tabDaily').onclick=function(){ S.mode='daily'; loadDaily(); render(); };
-document.getElementById('tabEndless').onclick=function(){ S.mode='endless'; withLoading(loadEndless); };
+document.getElementById('tabDaily').onclick=function(){ if(S.mode==='daily') return; S.mode='daily'; loadDaily(); render(); };
+document.getElementById('tabEndless').onclick=function(){ if(S.mode==='endless') return; S.mode='endless'; withLoading(loadEndless); };
 DIFF_KEYS.forEach(function(k){
-  document.getElementById(DIFF_IDS[k]).onclick=function(){ S.difficulty=k; withLoading(loadEndless); };
+  document.getElementById(DIFF_IDS[k]).onclick=function(){ if(S.difficulty===k && S.mode==='endless') return; S.difficulty=k; withLoading(loadEndless); };
 });
 
 /* ---------- Tageswechsel ---------- */
