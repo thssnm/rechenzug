@@ -89,18 +89,26 @@
   #status.daily{background:var(--surface1); color:var(--text-dim);}
   #status.stuck{background:var(--warn-bg); color:var(--warn-text);}
   #diffRow .tab{font-size:12px; padding:8px 0;}
-  #result{display:none; background:var(--surface1); border:1px solid var(--border); border-radius:14px;
-          padding:14px; margin-top:12px; text-align:center;}
+  #boardWrap{position:relative;}
+  #result{display:none; position:absolute; left:0; right:0; top:0; min-height:100%; box-sizing:border-box; z-index:5;
+          flex-direction:column; justify-content:center; text-align:center; padding:12px 14px;
+          background:rgba(27,30,38,.95); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px);
+          border:1px solid var(--border); border-radius:14px;}
+  #result.fresh{animation:rfade .4s ease-out .6s both;}
+  @keyframes rfade{from{opacity:0; transform:translateY(8px);}to{opacity:1; transform:none;}}
+  #result .rnote{font-size:12px; color:var(--text-dim); margin:0 0 8px;}
+  #manual{display:none; margin:0 0 8px; text-align:left;}
+  #manual textarea{width:100%; box-sizing:border-box; height:84px; resize:none; font:inherit; font-size:12px; line-height:1.4; color:var(--text); background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:6px 8px;}
   #result .rtitle{font-size:13px; color:var(--text-dim);}
-  #result .rmain{font-size:24px; font-weight:700; margin:4px 0 2px;}
-  #result .rverdict{font-size:14px; color:var(--ok-text); margin-bottom:10px;}
-  .trail{display:flex; flex-direction:column; gap:4px; align-items:center; margin:8px 0 6px;}
+  #result .rmain{font-size:26px; font-weight:700; margin:2px 0 0;}
+  #result .rverdict{font-size:14px; color:var(--ok-text); margin-bottom:6px;}
+  .trail{display:flex; flex-direction:column; gap:4px; align-items:center; margin:4px 0 4px;}
   .trail .row{display:flex; gap:4px;}
-  .sq{width:26px; height:26px; border-radius:6px;}
+  .sq{width:22px; height:22px; border-radius:5px;}
   .sq.m{background:#2f9e5b;} .sq.s{background:#c9ccd4;} .sq.u{background:#e0b83a;} .sq.r{background:#d2504b;}
-  .legend{font-size:11.5px; color:var(--text-dim); margin-bottom:12px; line-height:1.6;}
+  .legend{font-size:11px; color:var(--text-dim); margin-bottom:8px; line-height:1.5;}
   .legend i{display:inline-block; width:10px; height:10px; border-radius:3px; margin:0 4px -1px 8px;}
-  #result .btnrow{margin-top:6px; flex-wrap:wrap;}
+  #result .btnrow{margin-top:0; flex-wrap:wrap;}
   #imgBtn{flex-basis:100%;}
   #toast{min-height:18px; font-size:12.5px; color:var(--ok-text); margin-top:8px;}
   .btnrow{display:flex; gap:10px; margin-top:14px;}
@@ -137,17 +145,18 @@
     <div class="card"><div class="label">Ziel</div><div class="value" id="goal">–</div></div>
     <div class="card"><div class="label">Züge</div><div class="value"><span id="moves">0</span> <span style="font-size:12px;color:var(--text-dim);">/ min. <span id="minmoves">–</span></span></div></div>
   </div>
+  <div id="boardWrap">
   <div id="board"></div>
-  <div id="log"></div>
-  <div id="status"></div>
   <div id="result">
     <div class="rtitle" id="rTitle"></div>
     <div class="rmain" id="rMain"></div>
     <div class="rverdict" id="rVerdict"></div>
     <div class="trail" id="rTrail"></div>
     <div class="legend">
-      <i style="background:#2f9e5b"></i>gerechnet<i style="background:#c9ccd4"></i>geschoben<i style="background:#e0b83a"></i>rückgängig<i style="background:#d2504b"></i>zurückgesetzt
+      <i style="background:#2f9e5b"></i>gerechnet<i style="background:#c9ccd4"></i>geschoben<i style="background:#e0b83a"></i>rückgängig<i style="background:#d2504b"></i>Reset
     </div>
+    <div class="rnote">Für heute gelöst. Morgen kommt ein neues Rätsel.</div>
+    <div id="manual"><div class="rnote" id="manualNote"></div><textarea id="manualArea" readonly aria-label="Ergebnistext zum Kopieren"></textarea></div>
     <div class="btnrow">
       <button id="shareBtn">Teilen</button>
       <button id="copyBtn">Kopieren</button>
@@ -155,13 +164,16 @@
     </div>
     <div id="toast"></div>
   </div>
-  <div class="btnrow">
+  </div>
+  <div id="log"></div>
+  <div id="status"></div>
+  <div class="btnrow" id="mainBtns">
     <button id="undoBtn">Rückgängig</button>
     <button id="resetBtn">Zurücksetzen</button>
     <button id="newBtn" style="display:none;">Neues Rätsel</button>
     <button id="nextBtn" style="display:none;">Weiter</button>
   </div>
-  <footer>Rechenzug v0.11.0 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
+  <footer>Rechenzug v0.12.1 · lokal generiert, keine Server, keine Daten verlassen dein Gerät.</footer>
 </div>
 <div id="help">
   <div id="helpBox">
@@ -417,7 +429,7 @@ function pickPuzzle(rng, diff){
 }
 
 /* ---------- Game state ---------- */
-var S = { mode:'daily', difficulty:'medium', board:null, puzzle:null, moves:0, won:false, stuck:false, log:'', history:[], trail:'', pulse:[] };
+var S = { mode:'daily', difficulty:'medium', board:null, puzzle:null, moves:0, won:false, stuck:false, log:'', history:[], trail:'', pulse:[], dailyKey:null, justWon:false };
 
 function todayKey(){
   var d=new Date();
@@ -427,10 +439,10 @@ function todayKey(){
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 function loadDaily(){
-  var dk=todayKey();
+  var dk=todayKey(); S.dailyKey=dk;
   var rng=mulberry32(cyrb53('rechenzug-daily-'+dk));
   var puzzle=pickPuzzle(rng, DIFFS.hard);
-  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail=''; S.pulse=[];
+  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail=''; S.pulse=[]; S.justWon=false;
   var saved=null;
   try{ var raw=lsGet('rechenzug-daily-'+dk); saved=raw ? JSON.parse(raw) : null; }catch(e){ saved=null; }
   // Ergebnisse aus Versionen ohne Zugliste lassen sich nicht teilen: verwerfen, dann kann neu gespielt werden.
@@ -440,7 +452,7 @@ function loadEndless(){
   var diff = DIFFS[S.difficulty] || DIFFS.medium;
   var rng=mulberry32(cyrb53('rechenzug-endless-'+Date.now()+'-'+Math.random()));
   var puzzle=pickPuzzle(rng, diff);
-  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail=''; S.pulse=[];
+  S.puzzle=puzzle; S.board=puzzle.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail=''; S.pulse=[]; S.justWon=false;
 }
 
 /* ---------- Tutorial ---------- */
@@ -459,7 +471,7 @@ function loadTutorial(idx){
   S.tutorialIdx=idx;
   var t=TUTORIAL[idx];
   S.puzzle={cells:t.cells, mode:t.mode, target:t.target, minMoves:t.minMoves};
-  S.board=t.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail=''; S.pulse=[];
+  S.board=t.cells.slice(); S.moves=0; S.won=false; S.stuck=false; S.log=''; S.history=[]; S.trail=''; S.pulse=[]; S.justWon=false;
 }
 function goalText(p){
   if(p.mode==='exact') return '= '+p.target;
@@ -469,6 +481,8 @@ function goalText(p){
 function hasOperators(board){
   return board.some(function(c){ return c && c.t==='o'; });
 }
+// Nach einem gelösten Daily ist es für den Tag gesperrt (kein erneutes Spielen). Weiterüben geht in Endlos und Lernen.
+function isLocked(){ return S.mode==='daily' && (S.won || !!S.dailyDone); }
 function checkWin(){
   var p=S.puzzle;
   var ok = winCheck(S.board, p);
@@ -476,16 +490,16 @@ function checkWin(){
   S.stuck = !ok && !hasOperators(S.board);
   if(ok && S.mode==='daily'){
     var dk=todayKey();
-    var prev=S.dailyDone;
-    if(!prev || S.moves<prev.moves){
+    if(!S.dailyDone){
       var rec={moves:S.moves, trail:S.trail};
       lsSet('rechenzug-daily-'+dk, JSON.stringify(rec));
       S.dailyDone=rec;
+      S.justWon=true;
     }
   }
 }
 function move(d){
-  if(S.won) return;
+  if(S.won || isLocked()) return;
   var logArr=[];
   var nb=applyMove(S.board, d, logArr);
   if(!nb) return;
@@ -499,7 +513,7 @@ function move(d){
   render();
 }
 function undo(){
-  if(S.history.length===0 || S.won) return;
+  if(S.history.length===0 || S.won || isLocked()) return;
   var prev=S.history.pop();
   S.board=prev.board; S.moves++; S.log='Rückgängig'; S.trail += 'u'; S.pulse=[];
   S.stuck=false;
@@ -545,8 +559,10 @@ function shareText(r){
 }
 function renderResult(){
   var box=document.getElementById('result'), r=resultData();
-  if(!r){ box.style.display='none'; return; }
-  box.style.display='block';
+  if(!r){ box.style.display='none'; box.className=''; fitResult(); return; }
+  box.style.display='flex';
+  box.className = S.justWon ? 'fresh' : ''; S.justWon=false;   // Einblenden nur direkt nach dem Lösen
+  document.getElementById('manual').style.display='none';
   document.getElementById('rTitle').textContent='Rechenzug #'+dayNumber()+' \u00B7 '+dateDE();
   document.getElementById('rMain').textContent=r.moves+' Z\u00FCge';
   document.getElementById('rVerdict').textContent=verdict(r.moves, S.puzzle.minMoves)+' (min. '+S.puzzle.minMoves+')';
@@ -559,28 +575,54 @@ function renderResult(){
     row.split('').forEach(function(c){ var q=document.createElement('div'); q.className='sq '+c; rowEl.appendChild(q); });
     tr.appendChild(rowEl);
   });
+  fitResult();   // erst messen, wenn die Karte befüllt ist
 }
 function toast(msg){
   var el=document.getElementById('toast'); el.textContent=msg;
   setTimeout(function(){ if(el.textContent===msg) el.textContent=''; }, 2500);
 }
+// Zwischenablage in drei Stufen: Clipboard-API, dann klassisches Kopieren per Textfeld, zuletzt Text zum Selbstkopieren.
+function legacyCopy(text){
+  var ta=document.createElement('textarea');
+  ta.value=text; ta.setAttribute('readonly','');
+  ta.style.cssText='position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+  document.body.appendChild(ta);
+  var okc=false;
+  try{
+    ta.focus(); ta.select(); ta.setSelectionRange(0, text.length);
+    okc = typeof document.execCommand==='function' && document.execCommand('copy');
+  }catch(e){ okc=false; }
+  document.body.removeChild(ta);
+  return !!okc;
+}
 function copyText(text){
-  if(navigator.clipboard && navigator.clipboard.writeText){
-    return navigator.clipboard.writeText(text);
-  }
   return new Promise(function(res, rej){
-    try{
-      var ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
-      document.body.appendChild(ta); ta.select();
-      var okc=document.execCommand('copy'); document.body.removeChild(ta);
-      okc ? res() : rej(new Error('copy'));
-    }catch(e){ rej(e); }
+    function fallback(err){ legacyCopy(text) ? res() : rej(err || {name:'keine Zwischenablage-Funktion'}); }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      try{ navigator.clipboard.writeText(text).then(res, fallback); }catch(e){ fallback(e); }
+    } else { fallback(null); }
   });
 }
+function fitResult(){
+  var wrap=document.getElementById('boardWrap'), box=document.getElementById('result');
+  wrap.style.minHeight='';
+  if(box.style.display==='none') return;
+  var bh=document.getElementById('board').offsetHeight, ch=box.offsetHeight;
+  if(ch>bh) wrap.style.minHeight=ch+'px';       // Karte höher als das Brett: Platz im Layout freihalten
+}
+function showManual(text, err){
+  var area=document.getElementById('manualArea');
+  document.getElementById('manualNote').textContent='Dein Browser blockiert das automatische Kopieren ('+((err && err.name) || 'unbekannt')+'). Text antippen, markieren und kopieren:';
+  area.value=text; document.getElementById('manual').style.display='block'; fitResult();
+  try{ area.focus(); area.select(); area.setSelectionRange(0, text.length); }catch(e){}
+  toast('Bitte Text unten selbst kopieren');
+}
+function hideManual(){ document.getElementById('manual').style.display='none'; fitResult(); }
 function doCopy(){
   var r=resultData(); if(!r) return;
-  copyText(shareText(r)).then(function(){ toast('In die Zwischenablage kopiert'); },
-                              function(){ toast('Kopieren nicht m\u00F6glich'); });
+  var text=shareText(r);
+  copyText(text).then(function(){ hideManual(); toast('In die Zwischenablage kopiert'); },
+                      function(err){ showManual(text, err); });
 }
 function doShare(){
   var r=resultData(); if(!r) return;
@@ -682,7 +724,9 @@ function render(){
   document.getElementById('goal').textContent=goalText(S.puzzle);
   document.getElementById('minmoves').textContent=S.puzzle.minMoves;
   document.getElementById('log').textContent=S.log;
-  document.getElementById('moves').textContent=S.moves;
+  var locked=isLocked(), lr=locked ? resultData() : null;
+  document.getElementById('moves').textContent=lr ? lr.moves : S.moves;
+  document.getElementById('mainBtns').style.display = locked ? 'none' : 'flex';
   boardEl.innerHTML='';
   S.board.forEach(function(c, idx){
     var d=document.createElement('div');
@@ -696,11 +740,11 @@ function render(){
     st.className='ok'; st.textContent='Geschafft in '+S.moves+' Zügen';
   } else if(S.stuck){
     st.className='stuck'; st.textContent='Ziel nicht mehr erreichbar — rückgängig oder zurücksetzen';
-  } else if(S.mode==='daily' && S.dailyDone){
-    st.className='daily'; st.textContent='Heute schon gelöst, bestes Ergebnis: '+S.dailyDone.moves+' Züge';
   } else {
     st.className=''; st.textContent='';
   }
+  // Gesperrtes Daily: Status und Rechenzeile weg, die Karte über dem Brett sagt alles
+  if(locked){ st.className=''; st.textContent=''; document.getElementById('log').textContent=''; }
   var isTut = S.mode==='tutorial';
   var hintEl=document.getElementById('hint');
   hintEl.style.display = isTut ? 'block' : 'none';
@@ -739,6 +783,7 @@ boardEl.addEventListener('touchend', function(e){
   if(Math.abs(dx)>Math.abs(dy)) move(dx>0?1:0); else move(dy>0?3:2);
 });
 document.getElementById('resetBtn').onclick=function(){
+  if(isLocked()) return;
   S.board=S.puzzle.cells.slice(); S.log=''; S.history=[]; S.trail += 'r'; S.pulse=[];
   checkWin();
   render();
@@ -771,6 +816,13 @@ document.getElementById('tabEndless').onclick=function(){ S.mode='endless'; with
 DIFF_KEYS.forEach(function(k){
   document.getElementById(DIFF_IDS[k]).onclick=function(){ S.difficulty=k; withLoading(loadEndless); };
 });
+
+/* ---------- Tageswechsel ---------- */
+function checkDayRollover(){
+  if(S.mode==='daily' && S.dailyKey && S.dailyKey!==todayKey()){ loadDaily(); render(); }
+}
+document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') checkDayRollover(); });
+window.addEventListener('focus', checkDayRollover);
 
 /* ---------- Boot ---------- */
 loadDaily();
